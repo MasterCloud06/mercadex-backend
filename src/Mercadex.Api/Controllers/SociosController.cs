@@ -1,3 +1,4 @@
+using Mercadex.Api.Seguridad;
 using Mercadex.Application.DTOs.Socios;
 using Mercadex.Application.Services;
 using Mercadex.Domain.Caja;
@@ -44,19 +45,62 @@ public sealed class SociosController : ControllerBase
         return socio is null ? NotFound() : Ok(socio);
     }
 
+    /// <summary>
+    /// Registro de un socio o de un comerciante que no es socio (comedores
+    /// y ambulantes): esSocio = false. El lugar de expedición del CI es
+    /// opcional (el Kardex lo pide). Al no socio se le puede registrar sin CI.
+    /// </summary>
+    public sealed record CrearPersonaRequest(
+        string? Nombres,
+        string? Apellidos,
+        string? DocumentoIdentidad,
+        string? Telefono,
+        string? LugarExpedicion,
+        bool? EsSocio);
+
     [HttpPost]
-    public async Task<IActionResult> Crear(CrearSocioDto dto, CancellationToken ct)
+    public async Task<IActionResult> Crear([FromBody] CrearPersonaRequest r, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(dto.Nombres) || string.IsNullOrWhiteSpace(dto.Apellidos))
+        if (string.IsNullOrWhiteSpace(r.Nombres) || string.IsNullOrWhiteSpace(r.Apellidos))
             return BadRequest(new { mensaje = "Nombres y apellidos son obligatorios." });
 
-        if (string.IsNullOrWhiteSpace(dto.DocumentoIdentidad))
+        var esSocio = r.EsSocio ?? true;
+
+        if (esSocio && string.IsNullOrWhiteSpace(r.DocumentoIdentidad))
             return BadRequest(new { mensaje = "El CI es obligatorio." });
 
-        if (await DuplicadoAsync(dto.DocumentoIdentidad, null, ct) is { } otro)
-            return Conflict(new { mensaje = $"Ya existe un socio con el CI {dto.DocumentoIdentidad.Trim()}: {otro}." });
+        var documento = string.IsNullOrWhiteSpace(r.DocumentoIdentidad) ? SinDocumento : r.DocumentoIdentidad.Trim();
 
-        return Ok(await _service.CrearAsync(dto));
+        if (documento != SinDocumento && await DuplicadoAsync(documento, null, ct) is { } otro)
+            return Conflict(new { mensaje = $"Ya existe una persona con el CI {documento}: {otro}." });
+
+        SocioDto creado;
+        try
+        {
+            creado = await _service.CrearAsync(new CrearSocioDto(r.Nombres.Trim(), r.Apellidos.Trim(), documento, r.Telefono));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message.Split(" (Parameter")[0] });
+        }
+
+        var socio = await _db.Socios.FirstAsync(x => x.Id == creado.Id, ct);
+        try
+        {
+            socio.DefinirTipo(esSocio);
+            socio.CambiarLugarExpedicion(r.LugarExpedicion);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { mensaje = ex.Message.Split(" (Parameter")[0] });
+        }
+
+        await _db.SaveChangesAsync(ct);
+        HttpContext.Referencia(socio.Id);
+        HttpContext.Detalle($"{socio.Nombres} {socio.Apellidos}" + (esSocio ? "" : " (no socio)") +
+                            (documento == SinDocumento ? "" : $" · CI {documento}"));
+
+        return Ok(creado);
     }
 
     // =====================================================================
@@ -75,14 +119,14 @@ public sealed class SociosController : ControllerBase
         CancellationToken ct)
     {
         var socios = await _db.Socios.AsNoTracking()
-            .Select(s => new { s.Id, s.Nombres, s.Apellidos, s.DocumentoIdentidad, s.Telefono, s.FechaRegistro, s.Activo })
+            .Select(s => new { s.Id, s.Nombres, s.Apellidos, s.DocumentoIdentidad, s.Telefono, s.FechaRegistro, s.Activo, s.SinAfiliacion, s.LugarExpedicion })
             .ToListAsync(ct);
 
         var unidades = await (
                 from a in _db.AsignacionesSocioCaseta.AsNoTracking()
                 join u in _db.UnidadesComerciales.AsNoTracking() on a.UnidadComercialId equals u.Id
                 where a.Activa
-                select new { a.SocioId, u.Id, u.Codigo, u.Bloque })
+                select new { a.SocioId, u.Id, u.Codigo, u.Bloque, u.Tipo })
             .ToListAsync(ct);
 
         var deudas = await (
@@ -118,8 +162,12 @@ public sealed class SociosController : ControllerBase
                 id = s.Id,
                 nombres = s.Nombres,
                 apellidos = s.Apellidos,
-                nombreCompleto = s.Apellidos + " " + s.Nombres,
+                // Primero nombres y luego apellidos (pedido de la directiva).
+                nombreCompleto = s.Nombres + " " + s.Apellidos,
                 documento = s.DocumentoIdentidad == SinDocumento ? "" : s.DocumentoIdentidad,
+                lugarExpedicion = s.LugarExpedicion,
+                esSocio = !s.SinAfiliacion,
+                tiposUnidad = suyas.Select(u => (int)u.Tipo).Distinct().ToList(),
                 telefono = s.Telefono,
                 fechaRegistro = s.FechaRegistro,
                 activo = s.Activo,
@@ -138,6 +186,8 @@ public sealed class SociosController : ControllerBase
             "con-deuda" => filas.Where(f => f.activo && f.deudasPendientes > 0),
             "sin-caseta" => filas.Where(f => f.activo && f.casetas.Count == 0),
             "fallecidos" => filas.Where(f => f.fallecido),
+            "socios" => filas.Where(f => f.activo && f.esSocio),
+            "no-socios" => filas.Where(f => f.activo && !f.esSocio),
             _ => filas.Where(f => f.activo)
         };
 
@@ -161,6 +211,7 @@ public sealed class SociosController : ControllerBase
         {
             total = lista.Count,
             activos = socios.Count(s => s.Activo),
+            noSocios = socios.Count(s => s.Activo && s.SinAfiliacion),
             inactivos = socios.Count(s => !s.Activo),
             socios = lista
         });
@@ -256,6 +307,8 @@ public sealed class SociosController : ControllerBase
             nombres = s.Nombres,
             apellidos = s.Apellidos,
             documento = s.DocumentoIdentidad == SinDocumento ? "" : s.DocumentoIdentidad,
+            lugarExpedicion = s.LugarExpedicion,
+            esSocio = s.EsSocio,
             telefono = s.Telefono,
             fechaRegistro = s.FechaRegistro,
             activo = s.Activo,
@@ -290,7 +343,13 @@ public sealed class SociosController : ControllerBase
     // CAMBIOS (solo administrador, por PermisosPorRolFilter)
     // =====================================================================
 
-    public sealed record DatosSocioRequest(string Nombres, string Apellidos, string? DocumentoIdentidad, string? Telefono);
+    public sealed record DatosSocioRequest(
+        string Nombres,
+        string Apellidos,
+        string? DocumentoIdentidad,
+        string? Telefono,
+        string? LugarExpedicion = null,
+        bool? EsSocio = null);
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Actualizar(Guid id, [FromBody] DatosSocioRequest r, CancellationToken ct)
@@ -307,6 +366,11 @@ public sealed class SociosController : ControllerBase
         try
         {
             s.ActualizarDatos(r.Nombres ?? "", r.Apellidos ?? "", documento, r.Telefono);
+            // Las versiones anteriores del escritorio no envían estos datos: se conservan.
+            if (r.LugarExpedicion is not null)
+                s.CambiarLugarExpedicion(r.LugarExpedicion);
+            if (r.EsSocio is { } esSocio)
+                s.DefinirTipo(esSocio);
         }
         catch (ArgumentException ex)
         {

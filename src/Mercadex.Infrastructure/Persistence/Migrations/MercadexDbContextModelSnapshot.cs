@@ -730,6 +730,44 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.ToTable("AsignacionesSocioCaseta");
                 });
 
+            modelBuilder.Entity("Mercadex.Domain.Comunicacion.Comunicado", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Archivado")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Autor")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset>("FechaUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("MostrarEnApp")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Texto")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateOnly?>("VigenteHasta")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FechaUtc");
+
+                    b.ToTable("comunicados", (string)null);
+                });
+
             modelBuilder.Entity("Mercadex.Domain.Finanzas.Egreso", b =>
                 {
                     b.Property<Guid>("Id")
@@ -895,6 +933,12 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PasilloId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("PlanoX")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PlanoY")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Tipo")
                         .HasColumnType("integer");
 
@@ -986,10 +1030,17 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("FechaRegistro")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("LugarExpedicion")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
                     b.Property<string>("Nombres")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
+
+                    b.Property<bool>("SinAfiliacion")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Telefono")
                         .HasMaxLength(50)

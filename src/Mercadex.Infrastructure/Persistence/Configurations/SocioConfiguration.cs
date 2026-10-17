@@ -39,6 +39,9 @@ public sealed class SocioConfiguration :
 
         builder.Ignore(x => x.NombreCompleto);
 
+        builder.Ignore(x => x.EsSocio);
+        builder.Property(x => x.LugarExpedicion).HasMaxLength(30);
+
         builder.HasIndex(x => x.DocumentoIdentidad);
     }
 }
