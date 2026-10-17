@@ -146,6 +146,13 @@ public static class Cambios
         ["Pasillos.Crear"] = ("Casetas", "Pasillo creado"),
         ["Importacion.Padron"] = ("Casetas", "Padrón importado desde Excel"),
 
+        ["ConceptosCobro.Eliminar"] = ("Conceptos de cobro", "Concepto eliminado"),
+        ["MapaMercado.CargarPlano"] = ("Casetas", "Casetas cargadas del plano"),
+        ["Comunicados.Crear"] = ("Comunicados", "Comunicado creado"),
+        ["Comunicados.Editar"] = ("Comunicados", "Comunicado editado"),
+        ["Comunicados.Archivar"] = ("Comunicados", "Comunicado archivado"),
+        ["Comunicados.Restaurar"] = ("Comunicados", "Comunicado restaurado"),
+
         ["Usuarios.Crear"] = ("Usuarios", "Usuario creado"),
         ["Usuarios.Actualizar"] = ("Usuarios", "Usuario editado"),
         ["Usuarios.Restablecer"] = ("Usuarios", "Contraseña restablecida"),

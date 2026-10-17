@@ -37,6 +37,8 @@ public sealed class UnidadComercialConfiguration :
         builder.HasIndex(x => x.Codigo)
             .IsUnique();
 
+        // PlanoX / PlanoY: posición en el plano del mercado (int, opcionales).
+
         builder.HasOne<Pasillo>()
             .WithMany()
             .HasForeignKey(x => x.PasilloId)

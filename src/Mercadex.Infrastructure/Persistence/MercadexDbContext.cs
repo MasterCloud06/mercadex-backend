@@ -78,6 +78,9 @@ public sealed class MercadexDbContext : DbContext
     public DbSet<RegistroCambio> RegistroCambios =>
         Set<RegistroCambio>();
 
+    public DbSet<Mercadex.Domain.Comunicacion.Comunicado> Comunicados =>
+        Set<Mercadex.Domain.Comunicacion.Comunicado>();
+
 
     public DbSet<DetalleRecibo> DetallesRecibo =>
         Set<DetalleRecibo>();
