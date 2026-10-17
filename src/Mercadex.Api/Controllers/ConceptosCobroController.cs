@@ -116,6 +116,47 @@ public sealed class ConceptosCobroController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Elimina un concepto que nunca se usó (sin deudas ni tarifas). Uno que
+    /// ya se usó no se puede borrar: se desactiva, para que los recibos y
+    /// reportes anteriores sigan mostrando su nombre.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Eliminar(Guid id, CancellationToken ct)
+    {
+        var c = await _db.ConceptosCobro.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (c is null)
+            return NotFound(new { mensaje = "El concepto no existe." });
+
+        var deudas = await _db.Obligaciones.AsNoTracking().CountAsync(o => o.ConceptoCobroId == id, ct);
+        var tarifas = await _db.TarifasUnidad.AsNoTracking().CountAsync(t => t.ConceptoCobroId == id, ct);
+
+        if (deudas > 0 || tarifas > 0)
+        {
+            return Conflict(new
+            {
+                mensaje = $"«{c.Nombre}» ya se usó en {deudas} {(deudas == 1 ? "deuda" : "deudas")}" +
+                          (tarifas > 0 ? $" y {tarifas} {(tarifas == 1 ? "tarifa" : "tarifas")}" : "") +
+                          ": no se puede eliminar sin dañar los recibos y reportes. Desactívalo para que ya no aparezca."
+            });
+        }
+
+        var nombre = c.Nombre;
+        _db.ConceptosCobro.Remove(c);
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            return Conflict(new { mensaje = $"«{nombre}» está relacionado con otros datos y no se puede eliminar. Desactívalo." });
+        }
+
+        Mercadex.Api.Seguridad.Cambios.Detalle(HttpContext, $"Concepto {nombre} ({c.Codigo})");
+        return Ok(new { mensaje = $"Se eliminó el concepto «{nombre}»." });
+    }
+
     [HttpPost("{id:guid}/activar")]
     public async Task<IActionResult> Activar(Guid id, CancellationToken ct)
     {

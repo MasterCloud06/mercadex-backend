@@ -265,6 +265,29 @@ public sealed class AppSociosController : ControllerBase
 
     // ===================================================== PAGAR
 
+    /// <summary>Comunicados vigentes de la directiva (los marcados para la app).</summary>
+    [HttpGet("comunicados")]
+    [Authorize(Roles = SeguridadApp.RolSocio)]
+    public async Task<IActionResult> Comunicados(CancellationToken ct)
+    {
+        var hoy = ComunicadosController.Hoy();
+        var lista = await _db.Comunicados.AsNoTracking()
+            .Where(c => c.MostrarEnApp && !c.Archivado && (c.VigenteHasta == null || c.VigenteHasta >= hoy))
+            .OrderByDescending(c => c.FechaUtc)
+            .Take(30)
+            .ToListAsync(ct);
+
+        Response.Headers["Cache-Control"] = "no-store";
+        return Ok(lista.Select(c => new
+        {
+            id = c.Id,
+            titulo = c.Titulo,
+            texto = c.Texto,
+            fecha = c.FechaUtc.ToOffset(TimeSpan.FromHours(-4)),
+            autor = c.Autor
+        }));
+    }
+
     [HttpGet("datos-pago")]
     [Authorize(Roles = SeguridadApp.RolSocio)]
     public async Task<IActionResult> DatosPago(CancellationToken ct)

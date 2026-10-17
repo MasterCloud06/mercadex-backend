@@ -1,1 +1,1 @@
-AgregarCargoUsuarioYEmisorRecibo
+AgregarPlanoComunicadosYNoSocios

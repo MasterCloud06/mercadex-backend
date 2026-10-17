@@ -75,6 +75,7 @@ public sealed class KardexController : ControllerBase
                     so.Id,
                     nombre = so.Nombres + " " + so.Apellidos,
                     documento = so.DocumentoIdentidad,
+                    lugarExpedicion = so.LugarExpedicion,
                     telefono = so.Telefono,
                     fechaRegistro = so.FechaRegistro
                 })
@@ -98,7 +99,8 @@ public sealed class KardexController : ControllerBase
         var faltantes = CalcularFaltantes(
                 socioDocumentos is not null, tipos, kardex?.FechaIngreso,
                 kardex?.EstadoVida, kardex?.TipoDocumentoPropiedad,
-                kardex?.PropietarioAnterior, kardex?.AporteSocioPagado)
+                kardex?.PropietarioAnterior, kardex?.AporteSocioPagado,
+                TieneExpedicion(titular?.lugarExpedicion, titular?.documento))
             .Select(f => (object)new { tipo = f.Tipo, texto = f.Texto })
             .ToList();
 
@@ -292,7 +294,8 @@ public sealed class KardexController : ControllerBase
         string? estadoVida,
         string? tipoDocumentoPropiedad,
         string? propietarioAnterior,
-        bool? aportePagado)
+        bool? aportePagado,
+        bool tieneExpedicion = true)
     {
         var faltantes = new List<(int? Tipo, string Texto)>();
 
@@ -316,6 +319,10 @@ public sealed class KardexController : ControllerBase
                 Falta(TipoDocumentoKardex.Defuncion, "Certificado de óbito escaneado");
             if (aportePagado == true)
                 Falta(TipoDocumentoKardex.ComprobanteAporte, "Comprobante del aporte de socio escaneado");
+
+            // En el Kardex el lugar de expedición del CI es obligatorio (en Socios es opcional).
+            if (!tieneExpedicion)
+                faltantes.Add((null, "Lugar de expedición del CI"));
         }
 
         if (fechaIngreso is null)
@@ -345,7 +352,7 @@ public sealed class KardexController : ControllerBase
                 join s in _db.Socios.AsNoTracking() on a.SocioId equals s.Id
                 where a.Activa
                 orderby a.FechaAsignacion descending
-                select new { a.UnidadComercialId, s.Id, Nombre = s.Apellidos + " " + s.Nombres })
+                select new { a.UnidadComercialId, s.Id, Nombre = s.Nombres + " " + s.Apellidos, s.LugarExpedicion, s.DocumentoIdentidad })
             .ToListAsync(ct))
             .GroupBy(t => t.UnidadComercialId)
             .ToDictionary(g => g.Key, g => g.First());
@@ -374,7 +381,8 @@ public sealed class KardexController : ControllerBase
                         .ToHashSet();
 
                 var faltan = CalcularFaltantes(socio is not null, tipos, k?.FechaIngreso, k?.EstadoVida,
-                    k?.TipoDocumentoPropiedad, k?.PropietarioAnterior, k?.AporteSocioPagado);
+                    k?.TipoDocumentoPropiedad, k?.PropietarioAnterior, k?.AporteSocioPagado,
+                    t is null || TieneExpedicion(t.LugarExpedicion, t.DocumentoIdentidad));
 
                 return new
                 {
@@ -405,6 +413,23 @@ public sealed class KardexController : ControllerBase
             sinTitular = filas.Count(f => f.titular is null),
             casetas = filas
         });
+    }
+
+    private static readonly string[] Extensiones =
+        { "LP", "SC", "CB", "OR", "PT", "CH", "TJ", "BE", "PD", "PA" };
+
+    /// <summary>
+    /// Tiene lugar de expedición: el dato propio o, en registros anteriores,
+    /// la extensión escrita junto al CI ("1234567 LP").
+    /// </summary>
+    internal static bool TieneExpedicion(string? lugar, string? documento)
+    {
+        if (!string.IsNullOrWhiteSpace(lugar))
+            return true;
+
+        var partes = (documento ?? "").Trim().ToUpperInvariant()
+            .Split(new[] { ' ', '-', '.' }, StringSplitOptions.RemoveEmptyEntries);
+        return partes.Length > 1 && Extensiones.Contains(partes[^1]);
     }
 
     private static string? Limpiar(string? valor)

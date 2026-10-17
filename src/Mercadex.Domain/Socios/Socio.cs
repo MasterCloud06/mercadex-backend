@@ -87,6 +87,35 @@ public sealed class Socio : Entity
 
     public bool Activo { get; private set; }
 
+    /// <summary>
+    /// true: comerciante que NO es socio (comedores y ambulantes del
+    /// manual): puede tener unidad, deudas y pagar, pero no tiene Kardex.
+    /// false (por defecto): socio de la asociación.
+    /// </summary>
+    public bool SinAfiliacion { get; private set; }
+
+    public bool EsSocio => !SinAfiliacion;
+
+    /// <summary>Lugar de expedición del carnet (LP, SC, CB…). Opcional; el Kardex lo exige.</summary>
+    public string? LugarExpedicion { get; private set; }
+
+    public void DefinirTipo(bool esSocio) => SinAfiliacion = !esSocio;
+
+    public void CambiarLugarExpedicion(string? lugar)
+    {
+        lugar = lugar?.Trim();
+        if (string.IsNullOrEmpty(lugar))
+        {
+            LugarExpedicion = null;
+            return;
+        }
+
+        if (lugar.Length > 30)
+            throw new ArgumentException("El lugar de expedición es demasiado largo.", nameof(lugar));
+
+        LugarExpedicion = lugar.ToUpperInvariant();
+    }
+
 
     public string NombreCompleto =>
         $"{Nombres} {Apellidos}";

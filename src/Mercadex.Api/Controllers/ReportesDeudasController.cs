@@ -103,7 +103,7 @@ public sealed class ReportesDeudasController : ControllerBase
                 join s in _db.Socios.AsNoTracking() on a.SocioId equals s.Id
                 where a.Activa && ids.Contains(a.UnidadComercialId)
                 orderby a.FechaAsignacion descending
-                select new { a.UnidadComercialId, Nombre = s.Apellidos + " " + s.Nombres, s.Telefono })
+                select new { a.UnidadComercialId, Nombre = s.Nombres + " " + s.Apellidos, s.Telefono })
             .ToListAsync(ct))
             .GroupBy(t => t.UnidadComercialId)
             .ToDictionary(g => g.Key, g => g.First());

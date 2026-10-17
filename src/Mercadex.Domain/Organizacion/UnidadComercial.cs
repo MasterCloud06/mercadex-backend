@@ -50,6 +50,27 @@ public sealed class UnidadComercial : Entity
         Bloque = LimpiarOpcional(bloque);
     }
 
+    /// <summary>Posición en el plano del mercado (puntos del plano oficial); null si no está en el plano.</summary>
+    public int? PlanoX { get; private set; }
+
+    public int? PlanoY { get; private set; }
+
+    public void UbicarEnPlano(int? x, int? y)
+    {
+        if (x is null || y is null)
+        {
+            PlanoX = null;
+            PlanoY = null;
+            return;
+        }
+
+        if (x < 0 || y < 0)
+            throw new ArgumentException("La posición en el plano no puede ser negativa.");
+
+        PlanoX = x;
+        PlanoY = y;
+    }
+
     public void Activar()
     {
         Activa = true;

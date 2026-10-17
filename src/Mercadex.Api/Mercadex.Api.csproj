@@ -21,4 +21,8 @@
     <ProjectReference Include="..\Mercadex.Infrastructure\Mercadex.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Datos\plano-mercado.json" LogicalName="Mercadex.Api.Datos.plano-mercado.json" />
+  </ItemGroup>
+
 </Project>
