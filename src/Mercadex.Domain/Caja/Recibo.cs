@@ -96,6 +96,31 @@ public sealed class Recibo : Entity
     /// </summary>
     public string? RegistradoPorId { get; private set; }
 
+    public const int ObservacionesMaximo = 500;
+
+    /// <summary>Observaciones del cobro que se imprimen en el recibo (opcional).</summary>
+    public string? Observaciones { get; private set; }
+
+    public void AsignarObservaciones(string? observaciones)
+    {
+        if (string.IsNullOrWhiteSpace(observaciones))
+        {
+            Observaciones = null;
+            return;
+        }
+
+        var limpio = observaciones.Trim();
+
+        if (limpio.Length > ObservacionesMaximo)
+        {
+            throw new ArgumentException(
+                $"Las observaciones no pueden superar los {ObservacionesMaximo} caracteres.",
+                nameof(observaciones));
+        }
+
+        Observaciones = limpio;
+    }
+
     public void AsignarRegistradoPor(string? usuario, string? cargo = null, string? usuarioId = null)
     {
         if (!string.IsNullOrWhiteSpace(usuarioId))

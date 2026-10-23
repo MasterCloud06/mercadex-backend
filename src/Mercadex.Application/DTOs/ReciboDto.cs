@@ -18,4 +18,7 @@ public sealed record ReciboDto(
 
     /// <summary>Cargo de quien emitió el recibo.</summary>
     public string? CargoEmisor { get; init; }
+
+    /// <summary>Observaciones del cobro (opcional).</summary>
+    public string? Observaciones { get; init; }
 }

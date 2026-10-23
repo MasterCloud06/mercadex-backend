@@ -122,6 +122,7 @@ public static class Cambios
         ["Obligaciones.MarcarComoPagada"] = ("Obligaciones", "Deuda marcada como pagada"),
         ["Obligaciones.RestaurarComoPendiente"] = ("Obligaciones", "Deuda vuelta a pendiente"),
         ["CorreccionesObligaciones.CorregirMonto"] = ("Obligaciones", "Monto de deuda corregido"),
+        ["AnulacionesObligaciones.Confirmar"] = ("Obligaciones", "Deudas anuladas"),
 
         ["ConceptosCobro.Actualizar"] = ("Conceptos de cobro", "Concepto editado"),
         ["ConceptosCobro.Desactivar"] = ("Conceptos de cobro", "Concepto desactivado"),

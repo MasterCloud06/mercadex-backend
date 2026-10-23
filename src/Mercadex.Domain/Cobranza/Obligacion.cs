@@ -130,6 +130,10 @@ public sealed class Obligacion : Entity
         Estado == EstadoObligacion.Pagada;
 
 
+    public bool EstaAnulada =>
+        Estado == EstadoObligacion.Anulada;
+
+
     // Solo se permite corregir una obligacion pendiente.
     // El controlador debe comprobar ademas que no existan
     // pagos o recibos asociados antes de ejecutar el cambio.
@@ -168,6 +172,23 @@ public sealed class Obligacion : Entity
         }
 
         Estado = EstadoObligacion.Pagada;
+    }
+
+
+    // Anulacion logica: la deuda deja de contar en los saldos pero
+    // conserva su monto, concepto y periodo. Solo una deuda pendiente
+    // puede anularse; el registro de quien, cuando y por que queda en
+    // AnulacionObligaciones (ver ServicioAnulacionObligaciones).
+
+    public void Anular()
+    {
+        if (Estado != EstadoObligacion.Pendiente)
+        {
+            throw new InvalidOperationException(
+                "Solamente una obligación pendiente puede anularse.");
+        }
+
+        Estado = EstadoObligacion.Anulada;
     }
 
 

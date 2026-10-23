@@ -37,6 +37,7 @@ public sealed class ObligacionConfiguration :
 
         builder.Ignore(x => x.EstaPendiente);
         builder.Ignore(x => x.EstaPagada);
+        builder.Ignore(x => x.EstaAnulada);
 
         // Una obligacion por caseta, concepto y periodo.
         // No afecta obligaciones sin periodo mensual.
