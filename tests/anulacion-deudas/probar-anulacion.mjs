@@ -280,6 +280,30 @@ await prueba('Deuda con un pago QR en revisión: bloqueada', async () => {
   verdad(previa.bloqueadas[0].motivo.includes('pago QR en revisión'), 'motivo: ' + previa.bloqueadas[0].motivo);
 });
 
+await prueba('Deuda con un pago QR rechazado: se puede anular y el comprobante no cambia', async () => {
+  await A('POST', '/api/cobranza/cargo', {
+    unidadComercialId: unidad(1), conceptoCobroId: concepto, monedaId: bob.id, monto: 35,
+    fechaEmision: '2027-05-01', fechaVencimiento: null, anio: 2027, mes: 5
+  });
+  const d = (await deudasDe(1)).find(x => x.anio === 2027 && x.mes === 5);
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const qr = await api('POST', '/api/app/pagos', { token: app, sinClave: true, cuerpo: { obligacionIds: [d.id], referencia: 'QR-RECHAZO', comprobanteBase64: png, comprobanteTipo: 'image/png' } });
+
+  // En revisión: bloqueada.
+  igual((await P('POST', '/vista-previa', { obligacionIds: [d.id] })).cantidad, 0, 'bloqueada mientras está en revisión');
+
+  await api('POST', `/api/panel/pagos/${qr.id}/rechazar`, { token: admin, sinClave: true, cuerpo: { revisadoPor: 'Administrador Local', motivo: 'El monto no coincide' } });
+  const pagosAntes = (await api('GET', '/api/panel/pagos?estado=todos', { token: admin, sinClave: true })).find(x => x.id === qr.id);
+  igual(pagosAntes.estado, 'Rechazado', 'rechazado');
+
+  const { previa, r } = await anular({ obligacionIds: [d.id] });
+  igual([previa.cantidad, previa.bloqueadas.length], [1, 0], 'se puede anular');
+  igual(r.cantidad, 1, 'anulada');
+
+  const pagosDespues = (await api('GET', '/api/panel/pagos?estado=todos', { token: admin, sinClave: true })).find(x => x.id === qr.id);
+  igual([pagosDespues.estado, pagosDespues.motivoRechazo, pagosDespues.referencia], ['Rechazado', 'El monto no coincide', 'QR-RECHAZO'], 'comprobante sin cambios');
+});
+
 // ---------------------------------------------------------------- MASIVA
 const filtroNoviembre = { conceptoCobroId: concepto, anio: 2026, mes: 11, bloque };
 
