@@ -20,7 +20,7 @@ namespace Mercadex.Api.Controllers;
 /// anulación guarda quién, cuándo, el motivo (opcional) y una copia de cada deuda.
 /// <list type="bullet">
 /// <item>Solo deudas pendientes, sin recibos vigentes (un recibo anulado no cuenta) y sin
-/// comprobantes QR. Una deuda pagada se anula anulando su recibo en Caja.</item>
+/// pagos QR en revisión (uno rechazado no cuenta). Una deuda pagada se anula anulando su recibo en Caja.</item>
 /// <item>Siempre con vista previa: la confirmación lleva la huella de lo que
 /// se vio; si algo cambió entre la vista previa y la confirmación, no se anula nada.</item>
 /// <item>Consultar: cualquier usuario con sesión. Anular: solo el administrador.</item>
@@ -728,23 +728,15 @@ public sealed class AnulacionesObligacionesController : ControllerBase
 
         var arreglo = ids.ToArray();
 
+        // Solo bloquea un pago QR en revisión. Uno rechazado no es un pago, y uno
+        // aprobado ya emitió su recibo (que bloquea mientras esté vigente).
         var pagosQr = await _db.PagosReportados.AsNoTracking()
-            .Where(p => p.ObligacionIds.Any(x => arreglo.Contains(x)))
-            .Select(p => new { p.ObligacionIds, p.Estado })
+            .Where(p => p.Estado == EstadoPagoReportado.Pendiente && p.ObligacionIds.Any(x => arreglo.Contains(x)))
+            .Select(p => p.ObligacionIds)
             .ToListAsync(ct);
 
-        foreach (var p in pagosQr)
-        {
-            foreach (var id in p.ObligacionIds.Where(arreglo.Contains))
-            {
-                if (bloqueos.ContainsKey(id))
-                    continue;
-
-                bloqueos[id] = p.Estado == EstadoPagoReportado.Pendiente
-                    ? "Tiene un pago QR en revisión. Primero apruébalo o recházalo."
-                    : "Tiene un comprobante QR enviado por el socio. Necesita revisión antes de anularla.";
-            }
-        }
+        foreach (var id in pagosQr.SelectMany(x => x).Where(arreglo.Contains))
+            bloqueos.TryAdd(id, "Tiene un pago QR en revisión. Primero apruébalo o recházalo en Pagos QR.");
 
         return bloqueos;
     }
