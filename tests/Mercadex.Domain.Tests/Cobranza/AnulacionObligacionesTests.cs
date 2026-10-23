@@ -194,16 +194,31 @@ public sealed class AnulacionObligacionesTests
     }
 
     [Theory]
+    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("corto")]
-    public void Servicio_MotivoInvalido_DebeRechazarSinAnular(string motivo)
+    public void Servicio_SinMotivo_DebeAnularYDejarConstancia(string? motivo)
     {
         var deuda = CrearObligacion();
 
-        Assert.Throws<ArgumentException>(() => Anular(new[] { deuda }, TipoAnulacionObligaciones.Individual, motivo));
+        var anulacion = ServicioAnulacionObligaciones.Anular(
+            new[] { deuda }, Guid.CreateVersion7(), TipoAnulacionObligaciones.Individual,
+            motivo, "Ana Quispe", "usuario-1", null, DateTime.UtcNow);
 
-        Assert.True(deuda.EstaPendiente);
+        Assert.True(deuda.EstaAnulada);
+        Assert.Equal(AnulacionObligaciones.SinMotivo, anulacion.Motivo);
+        Assert.Equal("Ana Quispe", anulacion.Responsable);
+    }
+
+    [Fact]
+    public void Servicio_MotivoCorto_DebeAceptarse()
+    {
+        var deuda = CrearObligacion();
+
+        var anulacion = Anular(new[] { deuda }, TipoAnulacionObligaciones.Individual, "Error");
+
+        Assert.True(deuda.EstaAnulada);
+        Assert.Equal("Error", anulacion.Motivo);
     }
 
     [Fact]

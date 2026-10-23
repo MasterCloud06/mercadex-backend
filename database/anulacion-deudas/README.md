@@ -2,7 +2,7 @@
 
 Migración `20261023184008_AgregarAnulacionDeDeudas`. **Solo agrega**:
 
-- tabla `anulaciones_obligaciones`: una fila por anulación (quién, cuándo, motivo, filtros, clave de operación única);
+- tabla `anulaciones_obligaciones`: una fila por anulación (quién, cuándo, motivo opcional, filtros, clave de operación única);
 - tabla `detalles_anulacion_obligacion`: una fila por deuda anulada, con copia de monto, moneda, concepto, caseta y período (índice único por deuda);
 - sus índices y claves foráneas (`ON DELETE RESTRICT`).
 

@@ -10,14 +10,16 @@ public enum TipoAnulacionObligaciones
 
 /// <summary>
 /// Una anulación de deudas (una sola o varias a la vez): quién la hizo,
-/// cuándo, por qué y con qué filtros. Cada deuda anulada queda en
+/// cuándo, con qué filtros y, si se indicó, por qué. Cada deuda anulada queda en
 /// <see cref="Detalles"/> con una copia de sus datos. No se borra nada:
 /// la deuda sigue en la base con estado Anulada.
 /// </summary>
 public sealed class AnulacionObligaciones : Entity
 {
-    public const int MotivoMinimo = 10;
     public const int MotivoMaximo = 500;
+
+    /// <summary>Lo que queda en el historial cuando no se escribe un motivo (es opcional).</summary>
+    public const string SinMotivo = "Sin motivo indicado";
     public const int FiltrosMaximo = 1000;
 
     private readonly List<DetalleAnulacionObligacion> _detalles = [];
@@ -29,7 +31,7 @@ public sealed class AnulacionObligaciones : Entity
     internal AnulacionObligaciones(
         Guid claveOperacion,
         TipoAnulacionObligaciones tipo,
-        string motivo,
+        string? motivo,
         string responsable,
         string? responsableId,
         string? filtros,
@@ -49,12 +51,10 @@ public sealed class AnulacionObligaciones : Entity
                 "El tipo de anulación no es válido.");
         }
 
-        if (string.IsNullOrWhiteSpace(motivo) ||
-            motivo.Trim().Length < MotivoMinimo ||
-            motivo.Trim().Length > MotivoMaximo)
+        if (motivo?.Trim().Length > MotivoMaximo)
         {
             throw new ArgumentException(
-                $"El motivo debe contener entre {MotivoMinimo} y {MotivoMaximo} caracteres.",
+                $"El motivo no puede superar los {MotivoMaximo} caracteres.",
                 nameof(motivo));
         }
 
@@ -75,7 +75,7 @@ public sealed class AnulacionObligaciones : Entity
 
         ClaveOperacion = claveOperacion;
         Tipo = tipo;
-        Motivo = motivo.Trim();
+        Motivo = string.IsNullOrWhiteSpace(motivo) ? SinMotivo : motivo.Trim();
         Responsable = responsable.Trim();
         ResponsableId = string.IsNullOrWhiteSpace(responsableId)
             ? null
@@ -173,7 +173,7 @@ public static class ServicioAnulacionObligaciones
         IEnumerable<Obligacion> obligaciones,
         Guid claveOperacion,
         TipoAnulacionObligaciones tipo,
-        string motivo,
+        string? motivo,
         string responsable,
         string? responsableId,
         string? filtros,

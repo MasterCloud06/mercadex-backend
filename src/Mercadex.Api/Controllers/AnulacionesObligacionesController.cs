@@ -17,7 +17,7 @@ namespace Mercadex.Api.Controllers;
 /// <summary>
 /// Anulación de deudas (una o varias), sin borrar nada: la deuda queda en
 /// la base con estado Anulada y deja de contar en los saldos. Cada
-/// anulación guarda quién, cuándo, por qué y una copia de cada deuda.
+/// anulación guarda quién, cuándo, el motivo (opcional) y una copia de cada deuda.
 /// <list type="bullet">
 /// <item>Solo deudas pendientes, sin recibos (vigentes o anulados) y sin
 /// comprobantes QR. Una deuda pagada se anula anulando su recibo en Caja.</item>
@@ -380,18 +380,15 @@ public sealed class AnulacionesObligacionesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Confirmar([FromBody] ConfirmarRequest r, CancellationToken ct)
     {
-        var motivo = r.Motivo?.Trim() ?? "";
+        // El motivo es opcional (decisión de la directiva); quién y cuándo siempre se registran.
+        var motivo = string.IsNullOrWhiteSpace(r.Motivo) ? null : r.Motivo.Trim();
 
-        if (motivo.Length < AnulacionObligaciones.MotivoMinimo || motivo.Length > AnulacionObligaciones.MotivoMaximo)
-        {
-            return BadRequest(new
-            {
-                mensaje = $"Escribe el motivo de la anulación (de {AnulacionObligaciones.MotivoMinimo} a {AnulacionObligaciones.MotivoMaximo} caracteres)."
-            });
-        }
+        if (motivo?.Length > AnulacionObligaciones.MotivoMaximo)
+            return BadRequest(new { mensaje = $"El motivo no puede superar los {AnulacionObligaciones.MotivoMaximo} caracteres." });
 
+        // Confirmo: el cliente lo envía al pulsar el botón de la vista previa.
         if (!r.Confirmo)
-            return BadRequest(new { mensaje = "Confirma que revisaste la vista previa y que la anulación es definitiva." });
+            return BadRequest(new { mensaje = "Confirma la anulación desde la vista previa." });
 
         if (r.ClaveOperacion == Guid.Empty || string.IsNullOrWhiteSpace(r.Huella) || r.CantidadEsperada <= 0)
             return BadRequest(new { mensaje = "Primero revisa la vista previa de la anulación." });
@@ -487,7 +484,7 @@ public sealed class AnulacionesObligacionesController : ControllerBase
             (tipo == TipoAnulacionObligaciones.Individual
                 ? $"Caseta {anulables[0].Caseta} · {anulables[0].Concepto}{PeriodoTexto(anulables[0].Anio, anulables[0].Mes)}"
                 : $"{anulables.Count} deudas · {descripcion}") +
-            $" · {textoTotales} · Motivo: {anulacion.Motivo}");
+            $" · {textoTotales}" + (motivo is null ? "" : $" · Motivo: {anulacion.Motivo}"));
         HttpContext.Referencia(anulacion.Id);
 
         return Ok(new

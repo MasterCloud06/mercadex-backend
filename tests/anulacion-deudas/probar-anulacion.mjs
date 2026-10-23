@@ -148,12 +148,11 @@ if (CLAVE_APP) {
 }
 
 // ---------------------------------------------------------------- VALIDACIONES
-await prueba('Validaciones: motivo, confirmación, vista previa y filtros obligatorios', async () => {
+await prueba('Validaciones: largo del motivo, confirmación, vista previa y filtros obligatorios', async () => {
   const id = (await deuda(1, 11)).id;
   const previa = await P('POST', '/vista-previa', { obligacionIds: [id] });
   const base = { obligacionIds: [id], motivo: MOTIVO, confirmo: true, claveOperacion: nuevaClave(), huella: previa.huella, cantidadEsperada: 1 };
-  igual(await estado(P('POST', '', { ...base, motivo: 'corto' })), 400, 'motivo corto');
-  igual(await estado(P('POST', '', { ...base, motivo: '' })), 400, 'sin motivo');
+  igual(await estado(P('POST', '', { ...base, motivo: 'x'.repeat(501) })), 400, 'motivo de más de 500 caracteres');
   igual(await estado(P('POST', '', { ...base, confirmo: false })), 400, 'sin confirmar');
   igual(await estado(P('POST', '', { ...base, huella: '' })), 400, 'sin huella');
   igual(await estado(P('POST', '', { ...base, claveOperacion: '00000000-0000-0000-0000-000000000000' })), 400, 'sin clave');
@@ -209,6 +208,20 @@ await prueba('Anulación individual: estado Anulada, monto intacto, saldos recal
   // Sigue visible en el listado que usa el escritorio, con su estado.
   const escritorio = await A('GET', `/api/cobranza/deudas?caseta=Z1-${marca}&conceptoId=${concepto}&estado=Anulada`);
   igual(escritorio.deudas.map(x => x.id), [d.id], 'listado del escritorio');
+});
+
+await prueba('Sin motivo: se anula igual y el historial dice «Sin motivo indicado»', async () => {
+  await A('POST', '/api/cobranza/cargo', {
+    unidadComercialId: unidad(3), conceptoCobroId: concepto, monedaId: bob.id, monto: 40,
+    fechaEmision: '2027-01-01', fechaVencimiento: null, anio: 2027, mes: 1
+  });
+  const d = (await deudasDe(3)).find(x => x.anio === 2027 && x.mes === 1);
+  const { r } = await anular({ obligacionIds: [d.id] }, { motivo: '' });
+  igual(r.cantidad, 1, 'anuladas');
+  const despues = (await deudasDe(3)).find(x => x.id === d.id);
+  igual(despues.estado, 'Anulada', 'estado');
+  igual(despues.anulacion.motivo, 'Sin motivo indicado', 'motivo');
+  igual(despues.anulacion.responsable, 'Administrador Local', 'responsable');
 });
 
 // ---------------------------------------------------------------- DUPLICADOS
