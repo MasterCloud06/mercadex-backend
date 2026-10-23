@@ -329,12 +329,13 @@ public sealed class CobranzaController : ControllerBase
 
         var ids = lista.Select(u => u.Id).ToList();
 
+        // Una deuda anulada también cuenta: anularla no habilita a generarla
+        // otra vez (además, el índice único de la base lo impediría).
         var yaTienen = (await _db.Obligaciones.AsNoTracking()
                 .Where(o => ids.Contains(o.UnidadComercialId) &&
                             o.ConceptoCobroId == r.ConceptoCobroId &&
                             o.PeriodoAnio == r.Anio &&
-                            o.PeriodoMes == r.Mes &&
-                            o.Estado != EstadoObligacion.Anulada)
+                            o.PeriodoMes == r.Mes)
                 .Select(o => o.UnidadComercialId)
                 .ToListAsync(ct))
             .ToHashSet();
@@ -436,14 +437,29 @@ public sealed class CobranzaController : ControllerBase
         if (!await _db.Monedas.AsNoTracking().AnyAsync(m => m.Id == r.MonedaId && m.Activa, ct))
             return BadRequest(new { mensaje = "La moneda no existe o está inactiva." });
 
-        // Un concepto mensual no se cobra dos veces en el mismo período.
-        if (r.Anio is not null &&
-            await _db.Obligaciones.AsNoTracking().AnyAsync(o =>
-                o.UnidadComercialId == r.UnidadComercialId &&
-                o.ConceptoCobroId == r.ConceptoCobroId &&
-                o.PeriodoAnio == r.Anio &&
-                o.PeriodoMes == r.Mes &&
-                o.Estado != EstadoObligacion.Anulada, ct))
+        // Un concepto mensual no se cobra dos veces en el mismo período,
+        // ni se vuelve a cargar si esa deuda fue anulada.
+        var existente = r.Anio is null
+            ? null
+            : await _db.Obligaciones.AsNoTracking()
+                .Where(o =>
+                    o.UnidadComercialId == r.UnidadComercialId &&
+                    o.ConceptoCobroId == r.ConceptoCobroId &&
+                    o.PeriodoAnio == r.Anio &&
+                    o.PeriodoMes == r.Mes)
+                .Select(o => (EstadoObligacion?)o.Estado)
+                .FirstOrDefaultAsync(ct);
+
+        if (existente == EstadoObligacion.Anulada)
+        {
+            return Conflict(new
+            {
+                mensaje = $"La caseta {unidad.Codigo} tiene ese concepto para {r.Mes:00}/{r.Anio} anulado. " +
+                          "Una deuda anulada no se vuelve a cargar; revisa el historial de anulaciones."
+            });
+        }
+
+        if (existente is not null)
         {
             return Conflict(new
             {

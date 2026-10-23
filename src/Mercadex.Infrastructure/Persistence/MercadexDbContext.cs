@@ -107,6 +107,12 @@ public DbSet<Egreso> Egresos =>
     public DbSet<ArchivoKardex> ArchivosKardex =>
         Set<ArchivoKardex>();
 
+    public DbSet<AnulacionObligaciones> AnulacionesObligaciones =>
+        Set<AnulacionObligaciones>();
+
+    public DbSet<DetalleAnulacionObligacion> DetallesAnulacionObligacion =>
+        Set<DetalleAnulacionObligacion>();
+
     protected override void OnModelCreating(
         ModelBuilder modelBuilder)
     {

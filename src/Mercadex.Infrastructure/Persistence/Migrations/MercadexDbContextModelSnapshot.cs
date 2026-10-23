@@ -526,6 +526,51 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.ToTable("recibos", (string)null);
                 });
 
+            modelBuilder.Entity("Mercadex.Domain.Cobranza.AnulacionObligaciones", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Cantidad")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ClaveOperacion")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FechaUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Filtros")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Responsable")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("ResponsableId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Tipo")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClaveOperacion")
+                        .IsUnique();
+
+                    b.HasIndex("FechaUtc");
+
+                    b.ToTable("anulaciones_obligaciones", (string)null);
+                });
+
             modelBuilder.Entity("Mercadex.Domain.Cobranza.CambioMontoObligacion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -592,6 +637,55 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.HasIndex("Nombre");
 
                     b.ToTable("conceptos_cobro", (string)null);
+                });
+
+            modelBuilder.Entity("Mercadex.Domain.Cobranza.DetalleAnulacionObligacion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AnulacionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConceptoCobroId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EstadoAnterior")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("MonedaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Monto")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("ObligacionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("PeriodoAnio")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PeriodoMes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("UnidadComercialId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AnulacionId");
+
+                    b.HasIndex("ConceptoCobroId");
+
+                    b.HasIndex("MonedaId");
+
+                    b.HasIndex("ObligacionId")
+                        .IsUnique();
+
+                    b.HasIndex("UnidadComercialId");
+
+                    b.ToTable("detalles_anulacion_obligacion", (string)null);
                 });
 
             modelBuilder.Entity("Mercadex.Domain.Cobranza.Moneda", b =>
@@ -1284,6 +1378,39 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Mercadex.Domain.Cobranza.DetalleAnulacionObligacion", b =>
+                {
+                    b.HasOne("Mercadex.Domain.Cobranza.AnulacionObligaciones", null)
+                        .WithMany("Detalles")
+                        .HasForeignKey("AnulacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Mercadex.Domain.Cobranza.ConceptoCobro", null)
+                        .WithMany()
+                        .HasForeignKey("ConceptoCobroId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Mercadex.Domain.Cobranza.Moneda", null)
+                        .WithMany()
+                        .HasForeignKey("MonedaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Mercadex.Domain.Cobranza.Obligacion", null)
+                        .WithMany()
+                        .HasForeignKey("ObligacionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Mercadex.Domain.Organizacion.UnidadComercial", null)
+                        .WithMany()
+                        .HasForeignKey("UnidadComercialId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Mercadex.Domain.Cobranza.Obligacion", b =>
                 {
                     b.HasOne("Mercadex.Domain.Cobranza.ConceptoCobro", null)
@@ -1396,6 +1523,11 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Mercadex.Domain.Caja.Recibo", b =>
+                {
+                    b.Navigation("Detalles");
+                });
+
+            modelBuilder.Entity("Mercadex.Domain.Cobranza.AnulacionObligaciones", b =>
                 {
                     b.Navigation("Detalles");
                 });
