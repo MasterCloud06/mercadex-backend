@@ -362,6 +362,39 @@ await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se p
   verdad(linea && linea.detalle.includes('Desmarcadas (2)'), 'registro de cambios: ' + (linea?.detalle ?? 'sin línea'));
 });
 
+await prueba('Recibo con observaciones (opcionales): se guardan, se devuelven y quedan en el registro', async () => {
+  for (const n of [4, 5, 6]) {
+    await A('POST', '/api/cobranza/cargo', {
+      unidadComercialId: unidad(n), conceptoCobroId: concepto, monedaId: bob.id, monto: 25,
+      fechaEmision: '2027-04-01', fechaVencimiento: null, anio: 2027, mes: 4
+    });
+  }
+  const abril = async n => (await deudasDe(n)).find(x => x.anio === 2027 && x.mes === 4);
+  const cuerpo = (n, d, extra = {}) => ({
+    numeroRecibo: 0, unidadComercialId: unidad(n), monedaId: bob.id, monto: d.monto, formaPago: 1,
+    nombrePagador: 'Pagador Prueba', tipoCambio: 1, referencia: null,
+    items: [{ obligacionId: d.id, nombreConcepto: d.concepto }], ...extra
+  });
+
+  const obs = 'Pagó con billetes de 200; se le devolvió el cambio';
+  const conObs = await A('POST', '/api/caja/cobrar', cuerpo(4, await abril(4), { observaciones: `  ${obs}  ` }));
+  igual(conObs.recibo.observaciones, obs, 'respuesta del cobro');
+  igual((await A('GET', `/api/caja/recibos/${conObs.recibo.id}`)).observaciones, obs, 'recibo consultado');
+
+  // Como lo envía el instalador actual (sin el campo): sin observaciones.
+  const sinObs = await A('POST', '/api/caja/cobrar', cuerpo(5, await abril(5)));
+  igual((await A('GET', `/api/caja/recibos/${sinObs.recibo.id}`)).observaciones, null, 'sin observaciones');
+
+  // Más de 500 caracteres: no se cobra nada.
+  const d6 = await abril(6);
+  igual(await estado(A('POST', '/api/caja/cobrar', cuerpo(6, d6, { observaciones: 'x'.repeat(501) }))), 400, 'demasiado largas');
+  igual((await abril(6)).estado, 'Pendiente', 'la deuda sigue pendiente');
+
+  const registro = await A('GET', '/api/registro-cambios?modulo=Caja');
+  verdad(registro.filas.some(f => f.accion === 'Cobro registrado' && f.detalle.includes(`Recibo N.º ${conObs.recibo.numero}`) && f.detalle.includes(`Obs.: ${obs}`)),
+    'registro de cambios con las observaciones');
+});
+
 // ---------------------------------------------------------------- CONCURRENCIA
 await prueba('Concurrencia: 5 confirmaciones simultáneas de la misma anulación → una sola', async () => {
   const filtro = { conceptoCobroId: concepto, anio: 2026, mes: 12, bloque };

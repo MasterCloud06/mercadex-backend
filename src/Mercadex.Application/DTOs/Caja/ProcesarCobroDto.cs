@@ -9,5 +9,7 @@ public sealed record ProcesarCobroDto(
     string NombrePagador,
     decimal TipoCambio,
     string? Referencia,
-    IEnumerable<ItemCobroDto> Items
+    IEnumerable<ItemCobroDto> Items,
+    // Opcional: se imprime en el recibo. Los instaladores anteriores no lo envían.
+    string? Observaciones = null
 );

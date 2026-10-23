@@ -43,7 +43,8 @@ public sealed class ReciboRepository : IReciboRepository
                 r.AnuladoPor)
             {
                 RegistradoPor = r.RegistradoPor,
-                CargoEmisor = r.CargoEmisor
+                CargoEmisor = r.CargoEmisor,
+                Observaciones = r.Observaciones
             })
             .FirstOrDefaultAsync();
     }
@@ -75,7 +76,8 @@ public sealed class ReciboRepository : IReciboRepository
                 r.AnuladoPor)
             {
                 RegistradoPor = r.RegistradoPor,
-                CargoEmisor = r.CargoEmisor
+                CargoEmisor = r.CargoEmisor,
+                Observaciones = r.Observaciones
             })
             .ToListAsync();
     }

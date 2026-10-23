@@ -1,4 +1,4 @@
-using Mercadex.Api.Seguridad;
+﻿using Mercadex.Api.Seguridad;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Mercadex.Application.DTOs;
@@ -145,7 +145,8 @@ public async Task<ActionResult<ResultadoCobroDto>> ProcesarCobro(
     HttpContext.Detalle(
         $"Recibo N.º {resultado.Recibo.Numero} · Caseta {caseta} · {resultado.Pago.FormaPago} · " +
         $"{Cambios.Monto(resultado.Pago.Monto, moneda ?? "")} · " +
-        string.Join(", ", resultado.Recibo.Detalles.Select(d => d.Concepto)));
+        string.Join(", ", resultado.Recibo.Detalles.Select(d => d.Concepto)) +
+        (string.IsNullOrWhiteSpace(resultado.Recibo.Observaciones) ? "" : $" · Obs.: {resultado.Recibo.Observaciones}"));
 
     return Ok(resultado);
 }

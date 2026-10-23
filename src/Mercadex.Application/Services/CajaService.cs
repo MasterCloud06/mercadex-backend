@@ -156,6 +156,7 @@ public async Task<ResultadoCobroDto> ProcesarCobroAsync(
 
         // Quién registró el cobro (usuario con sesión iniciada).
         resultado.Recibo.AsignarRegistradoPor(registradoPor, cargoEmisor, registradoPorId);
+        resultado.Recibo.AsignarObservaciones(dto.Observaciones);
 
         await _pagoRepository.GuardarAsync(resultado.Pago);
 
@@ -193,7 +194,8 @@ public async Task<ResultadoCobroDto> ProcesarCobroAsync(
                         d.PeriodoMes)))
             {
                 RegistradoPor = resultado.Recibo.RegistradoPor,
-                CargoEmisor = resultado.Recibo.CargoEmisor
+                CargoEmisor = resultado.Recibo.CargoEmisor,
+                Observaciones = resultado.Recibo.Observaciones
             }
         );
     }

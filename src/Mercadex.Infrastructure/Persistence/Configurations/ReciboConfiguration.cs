@@ -41,6 +41,9 @@ builder.Property(x => x.RegistradoPor)
         builder.Property(x => x.RegistradoPorId)
             .HasMaxLength(64);
 
+        builder.Property(x => x.Observaciones)
+            .HasMaxLength(Recibo.ObservacionesMaximo);
+
         builder.Property(x => x.AnuladoPor)
     .HasMaxLength(150);
 

@@ -497,6 +497,10 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.Property<long>("Numero")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid>("PagoId")
                         .HasColumnType("uuid");
 

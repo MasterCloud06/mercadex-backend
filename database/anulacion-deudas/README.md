@@ -13,6 +13,11 @@ la anula desde el panel o el escritorio. El script SQL equivalente, para revisar
 
 `Down()` no borra las tablas a propósito (lanza un error): conservan el historial de anulaciones.
 
+Migración `20261023194916_AgregarObservacionesRecibo` (observaciones opcionales del recibo). **Solo agrega**
+la columna `recibos."Observaciones"` (`varchar(500)`, admite vacío). Los recibos existentes quedan sin
+observaciones y no cambian. PostgreSQL agrega una columna vacía sin reescribir la tabla. Script para
+revisarla: `20261023194916_AgregarObservacionesRecibo.sql`. Su `Down()` tampoco borra la columna.
+
 ## Antes de desplegar
 
 1. **Respaldo** de la base de producción:
@@ -37,7 +42,8 @@ la anula desde el panel o el escritorio. El script SQL equivalente, para revisar
    (si alguien cobró en ese intervalo, cambian `obligaciones`, `recibos`, `pagos`, `detalles_recibo` y `registro_cambios`; las demás no).
 4. Ejecutar `verificar-despues.sql`: la migración está aplicada, las deudas por estado coinciden con las de antes y las consultas de coherencia dan 0.
 5. Recién entonces publicar **mercadex-panel** (merge a `main`) y el instalador del **escritorio**.
-   Si se publican antes, sus botones de anulación reciben 404 de la API anterior; nada se rompe.
+   Si se publican antes, sus botones de anulación reciben 404 de la API anterior; nada se rompe,
+   pero las observaciones del recibo se perderían en silencio (la API anterior ignora ese campo).
 
 ## Volver atrás
 
