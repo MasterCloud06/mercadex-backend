@@ -330,6 +330,38 @@ await prueba('Repetir la generación no recrea deudas anuladas', async () => {
   igual(todas.total, 8, 'siguen siendo 8 deudas de noviembre');
 });
 
+await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se pueden cobrar después)', async () => {
+  const datos = {
+    conceptoCobroId: concepto, anio: 2027, mes: 3, alcance: 'bloque', bloque, modoMonto: 'fijo', monto: 70,
+    monedaId: bob.id, fechaEmision: '2027-03-01', fechaVencimiento: '2027-03-28'
+  };
+  const previa = await A('GET', `/api/cobranza/cargo-masivo/vista-previa?${new URLSearchParams(datos)}`);
+  igual(previa.listas, 8, 'listas en la vista previa');
+  const excluir = [unidad(2), unidad(3)];
+
+  // Con la cantidad de la vista previa sin descontar las desmarcadas: 409 y nada se genera.
+  igual(await estado(A('POST', '/api/cobranza/cargo-masivo', { ...datos, listasEsperadas: 8, excluirUnidadIds: excluir })), 409, 'cantidad sin descontar');
+
+  const r = await A('POST', '/api/cobranza/cargo-masivo', { ...datos, listasEsperadas: 6, excluirUnidadIds: excluir });
+  igual([r.generadas, r.desmarcadas], [6, 2], 'generadas y desmarcadas');
+  igual(r.totales, [{ moneda: 'BOB', cantidad: 6, total: 420 }], 'total solo de las generadas');
+
+  const marzo = n => deudasDe(n).then(l => l.filter(x => x.anio === 2027 && x.mes === 3));
+  for (const n of [1, 4, 5, 6, 7, 8]) igual((await marzo(n)).length, 1, `Z${n} recibió la deuda`);
+  for (const n of [2, 3]) igual((await marzo(n)).length, 0, `Z${n} desmarcada no la recibió`);
+
+  // La desmarcada no queda bloqueada: se le puede cargar después.
+  await A('POST', '/api/cobranza/cargo', {
+    unidadComercialId: unidad(2), conceptoCobroId: concepto, monedaId: bob.id, monto: 70,
+    fechaEmision: '2027-03-01', fechaVencimiento: null, anio: 2027, mes: 3
+  });
+  igual((await marzo(2)).length, 1, 'Z2 cobrada después');
+
+  const registro = await A('GET', '/api/registro-cambios?modulo=Obligaciones');
+  const linea = registro.filas.find(f => f.accion === 'Cargo mensual generado' && f.detalle.includes('03/2027') && f.detalle.includes(marca));
+  verdad(linea && linea.detalle.includes('Desmarcadas (2)'), 'registro de cambios: ' + (linea?.detalle ?? 'sin línea'));
+});
+
 // ---------------------------------------------------------------- CONCURRENCIA
 await prueba('Concurrencia: 5 confirmaciones simultáneas de la misma anulación → una sola', async () => {
   const filtro = { conceptoCobroId: concepto, anio: 2026, mes: 12, bloque };

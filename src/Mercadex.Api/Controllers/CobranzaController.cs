@@ -1,4 +1,5 @@
 using System.Data;
+using Mercadex.Api.Seguridad;
 using Mercadex.Domain.Cobranza;
 using Mercadex.Domain.Organizacion;
 using Mercadex.Infrastructure.Persistence;
@@ -191,8 +192,11 @@ public sealed class CobranzaController : ControllerBase
 
         public DateOnly? FechaVencimiento { get; set; }
 
-        /// <summary>Cantidad que mostró la vista previa (para detectar cambios).</summary>
+        /// <summary>Cantidad que mostró la vista previa (para detectar cambios), sin las desmarcadas.</summary>
         public int? ListasEsperadas { get; set; }
+
+        /// <summary>Casetas que el administrador desmarcó en la vista previa: no reciben la deuda.</summary>
+        public List<Guid>? ExcluirUnidadIds { get; set; }
     }
 
     private sealed record FilaCargo(
@@ -224,7 +228,9 @@ public sealed class CobranzaController : ControllerBase
         if (error is not null)
             return error;
 
-        var listas = filas!.Where(f => f.Estado == "Lista").ToList();
+        var excluir = r.ExcluirUnidadIds?.ToHashSet() ?? new HashSet<Guid>();
+        var listas = filas!.Where(f => f.Estado == "Lista" && !excluir.Contains(f.UnidadId)).ToList();
+        var desmarcadas = filas!.Count(f => f.Estado == "Lista" && excluir.Contains(f.UnidadId));
 
         if (r.ListasEsperadas is { } esperadas && esperadas != listas.Count)
         {
@@ -236,7 +242,14 @@ public sealed class CobranzaController : ControllerBase
         }
 
         if (listas.Count == 0)
-            return Conflict(new { mensaje = "No hay deudas nuevas para generar con estos datos." });
+        {
+            return Conflict(new
+            {
+                mensaje = desmarcadas > 0
+                    ? "Desmarcaste todas las casetas: no hay deudas para generar."
+                    : "No hay deudas nuevas para generar con estos datos."
+            });
+        }
 
         var nuevas = listas
             .Select(f => new Obligacion(
@@ -255,14 +268,30 @@ public sealed class CobranzaController : ControllerBase
         await transaccion.CommitAsync(ct);
 
         var respuesta = await RespuestaAsync(filas!, ct);
+        var generadas = await RespuestaAsync(listas, ct);
+
+        var concepto = await _db.ConceptosCobro.AsNoTracking()
+            .Where(c => c.Id == r.ConceptoCobroId).Select(c => c.Nombre).FirstOrDefaultAsync(ct);
+        var sinCobrar = filas!
+            .Where(f => f.Estado == "Lista" && excluir.Contains(f.UnidadId))
+            .Select(f => f.Codigo)
+            .ToList();
+
+        HttpContext.Detalle(
+            $"{concepto} {r.Mes:00}/{r.Anio} · {nuevas.Count} deudas · " +
+            string.Join(" + ", generadas.Totales.Select(t => Cambios.Monto(t.Total, t.Moneda))) +
+            (sinCobrar.Count == 0
+                ? ""
+                : $" · Desmarcadas ({sinCobrar.Count}): " + string.Join(", ", sinCobrar.Take(40)) + (sinCobrar.Count > 40 ? "…" : "")));
 
         return Ok(new
         {
             mensaje = $"Se generaron {nuevas.Count} deudas.",
             generadas = nuevas.Count,
+            desmarcadas,
             yaTenian = respuesta.YaTenian,
             sinTarifa = respuesta.SinTarifa,
-            totales = respuesta.Totales
+            totales = generadas.Totales
         });
     }
 
