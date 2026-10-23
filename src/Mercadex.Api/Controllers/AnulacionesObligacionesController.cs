@@ -19,7 +19,7 @@ namespace Mercadex.Api.Controllers;
 /// la base con estado Anulada y deja de contar en los saldos. Cada
 /// anulación guarda quién, cuándo, el motivo (opcional) y una copia de cada deuda.
 /// <list type="bullet">
-/// <item>Solo deudas pendientes, sin recibos (vigentes o anulados) y sin
+/// <item>Solo deudas pendientes, sin recibos vigentes (un recibo anulado no cuenta) y sin
 /// comprobantes QR. Una deuda pagada se anula anulando su recibo en Caja.</item>
 /// <item>Siempre con vista previa: la confirmación lleva la huella de lo que
 /// se vio; si algo cambió entre la vista previa y la confirmación, no se anula nada.</item>
@@ -713,21 +713,18 @@ public sealed class AnulacionesObligacionesController : ControllerBase
         if (ids.Count == 0)
             return bloqueos;
 
-        // Cualquier recibo, vigente o anulado: la deuda tiene historial de cobro.
+        // Solo un recibo vigente bloquea. Si todos sus recibos están anulados, el
+        // pago también lo está y no hay cobro válido: la deuda se puede anular y
+        // los recibos anulados quedan como estaban, en el historial.
         var recibos = await (
                 from d in _db.DetallesRecibo.AsNoTracking()
                 join r in _db.Recibos.AsNoTracking() on EF.Property<Guid>(d, "ReciboId") equals r.Id
-                where ids.Contains(d.ObligacionId)
-                select new { d.ObligacionId, r.Numero, r.Estado })
+                where ids.Contains(d.ObligacionId) && r.Estado != EstadoRecibo.Anulado
+                select new { d.ObligacionId, r.Numero })
             .ToListAsync(ct);
 
         foreach (var g in recibos.GroupBy(x => x.ObligacionId))
-        {
-            var vigente = g.FirstOrDefault(x => x.Estado != EstadoRecibo.Anulado);
-            bloqueos[g.Key] = vigente is not null
-                ? $"Tiene el recibo N.º {vigente.Numero}. Se anula desde Caja."
-                : $"Tuvo un cobro (recibo N.º {g.First().Numero}, anulado). Necesita revisión antes de anularla.";
-        }
+            bloqueos[g.Key] = $"Tiene el recibo N.º {g.First().Numero}. Se anula desde Caja.";
 
         var arreglo = ids.ToArray();
 
