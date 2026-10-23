@@ -68,6 +68,12 @@ public sealed class AnulacionesObligacionesController : ControllerBase
 
         /// <summary>Pendiente, Pagada, Anulada o vacío (todas). Solo para consultar.</summary>
         public string? Estado { get; set; }
+
+        /// <summary>
+        /// Anulación por filtros: deudas que el administrador desmarcó en la vista
+        /// previa y no se anulan. Se ignora cuando se eligen deudas una por una.
+        /// </summary>
+        public List<Guid>? ExcluirObligacionIds { get; set; }
     }
 
     public sealed class ConfirmarRequest : FiltroDeudas
@@ -580,6 +586,16 @@ public sealed class AnulacionesObligacionesController : ControllerBase
             {
                 mensaje = $"Hay más de {Limite} deudas con esos filtros. Acota la búsqueda (por ejemplo, por mes o por bloque)."
             }), "");
+        }
+
+        if (f.ExcluirObligacionIds is { Count: > 0 } excluir)
+        {
+            var excluidas = excluir.ToHashSet();
+            var antes = lista.Count;
+            lista = lista.Where(x => !excluidas.Contains(x.Id)).ToList();
+
+            if (antes > lista.Count)
+                descripcion += $" · {antes - lista.Count} desmarcada{(antes - lista.Count == 1 ? "" : "s")}";
         }
 
         return (lista, null, descripcion);

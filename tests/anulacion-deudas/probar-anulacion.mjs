@@ -334,6 +334,33 @@ await prueba('Anulación masiva por concepto, período y bloque: solo las pendie
   igual(detalle.totales, [{ moneda: 'BOB', cantidad: 4, total: 420 }], 'totales del detalle');
 });
 
+await prueba('Masiva con desmarcadas: solo se anulan las marcadas', async () => {
+  const datos = {
+    conceptoCobroId: concepto, anio: 2027, mes: 6, alcance: 'bloque', bloque, modoMonto: 'fijo', monto: 45,
+    monedaId: bob.id, fechaEmision: '2027-06-01', fechaVencimiento: '2027-06-28'
+  };
+  await A('POST', '/api/cobranza/cargo-masivo', datos);
+  const filtro = { conceptoCobroId: concepto, anio: 2027, mes: 6, bloque };
+  const junio = async n => (await deudasDe(n)).find(x => x.anio === 2027 && x.mes === 6);
+  const excluir = [(await junio(1)).id, (await junio(2)).id];
+
+  const completa = await P('POST', '/vista-previa', filtro);
+  igual(completa.cantidad, 8, 'vista previa completa');
+
+  // La huella de la vista previa completa no sirve para confirmar con desmarcadas.
+  igual(await estado(P('POST', '', { ...filtro, excluirObligacionIds: excluir, motivo: MOTIVO, confirmo: true, claveOperacion: nuevaClave(), huella: completa.huella, cantidadEsperada: 8 })), 409, 'huella sin descontar');
+
+  const { previa, r } = await anular({ ...filtro, excluirObligacionIds: excluir });
+  igual(previa.cantidad, 6, 'vista previa sin las desmarcadas');
+  igual(previa.totales, [{ moneda: 'BOB', cantidad: 6, total: 270 }], 'total');
+  verdad(previa.filtros.includes('2 desmarcadas'), 'filtros: ' + previa.filtros);
+  igual(r.cantidad, 6, 'anuladas');
+  for (const n of [1, 2]) igual((await junio(n)).estado, 'Pendiente', `Z${n} desmarcada sigue pendiente`);
+  for (const n of [3, 4, 5, 6, 7, 8]) igual((await junio(n)).estado, 'Anulada', `Z${n} anulada`);
+  const historial = await P('GET', '/historial');
+  verdad(historial.some(h => h.id === r.anulacionId && h.filtros.includes('2 desmarcadas')), 'historial con desmarcadas');
+});
+
 await prueba('Por socio: solo las casetas de las que es titular', async () => {
   const previa = await P('POST', '/vista-previa', { socioId: socio.id, conceptoCobroId: concepto, anio: 2026, mes: 12 });
   igual(previa.deudas.map(d => d.caseta).sort(), [`Z1-${marca}`, `Z2-${marca}`], 'casetas');
