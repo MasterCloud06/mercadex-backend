@@ -254,14 +254,21 @@ await prueba('Deuda pagada: no se puede anular; el recibo y el pago no cambian',
   igual(recibo.estado, reciboZ3.estado, 'estado del recibo');
 });
 
-await prueba('Deuda con un recibo anulado: bloqueada (necesita revisión)', async () => {
+await prueba('Deuda con su recibo anulado: se puede anular y el recibo anulado no cambia', async () => {
   const d = await deuda(4, 11);
   const cobro = await cobrar([d.id], 4);
   await A('PUT', `/api/caja/recibos/${cobro.recibo.id}/anular`, { motivo: 'Prueba: recibo anulado' });
   igual((await deuda(4, 11)).estado, 'Pendiente', 'vuelve a pendiente');
-  const previa = await P('POST', '/vista-previa', { obligacionIds: [d.id] });
-  igual(previa.cantidad, 0, 'anulables');
-  verdad(previa.bloqueadas[0].motivo.startsWith('Tuvo un cobro'), 'motivo: ' + previa.bloqueadas[0].motivo);
+  const reciboAntes = await A('GET', `/api/caja/recibos/${cobro.recibo.id}`);
+  igual(reciboAntes.estado, 'Anulado', 'recibo anulado');
+
+  const { previa, r } = await anular({ obligacionIds: [d.id] });
+  igual([previa.cantidad, previa.bloqueadas.length], [1, 0], 'se puede anular');
+  igual(r.cantidad, 1, 'anulada');
+  igual((await deuda(4, 11)).estado, 'Anulada', 'estado');
+
+  const reciboDespues = await A('GET', `/api/caja/recibos/${cobro.recibo.id}`);
+  igual(reciboDespues, reciboAntes, 'el recibo anulado queda idéntico');
 });
 
 await prueba('Deuda con un pago QR en revisión: bloqueada', async () => {
@@ -279,7 +286,7 @@ const filtroNoviembre = { conceptoCobroId: concepto, anio: 2026, mes: 11, bloque
 await prueba('Vista previa desactualizada (monto corregido): 409 y no se anula nada', async () => {
   const previa = await P('POST', '/vista-previa', filtroNoviembre);
   igual(previa.cantidad, 4, 'anulables (Z5–Z8)');
-  igual(previa.noAnulables, 2, 'no anulables (Z2 QR, Z4 recibo anulado)');
+  igual(previa.noAnulables, 1, 'no anulables (Z2 con pago QR en revisión; Z4 ya anulada no entra)');
   const z5 = await deuda(5, 11);
   await A('PUT', `/api/obligaciones-correcciones/${z5.id}/monto`, { montoAnteriorEsperado: 100, montoNuevo: 120, motivo: 'Prueba: corrección de monto' });
   igual(await estado(P('POST', '', { ...filtroNoviembre, motivo: MOTIVO, confirmo: true, claveOperacion: nuevaClave(), huella: previa.huella, cantidadEsperada: previa.cantidad })), 409, 'confirmar');
@@ -296,7 +303,7 @@ await prueba('Anulación masiva por concepto, período y bloque: solo las pendie
   igual((await deuda(5, 11)).monto, 120, 'monto de Z5 conservado');
   igual((await deuda(2, 11)).estado, 'Pendiente', 'Z2 (QR) sin tocar');
   igual((await deuda(3, 11)).estado, 'Pagada', 'Z3 (pagada) sin tocar');
-  igual((await deuda(4, 11)).estado, 'Pendiente', 'Z4 (recibo anulado) sin tocar');
+  igual((await deuda(4, 11)).estado, 'Anulada', 'Z4 (anulada antes) sin cambios');
   igual((await deuda(5, 12)).estado, 'Pendiente', 'diciembre sin tocar');
   const detalle = await P('GET', `/${r.anulacionId}`);
   igual(detalle.deudas.length, 4, 'detalle');

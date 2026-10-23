@@ -16,10 +16,12 @@ SELECT count(*) AS anuladas_sin_registro
 FROM obligaciones o
 WHERE o."Estado" = 3
   AND NOT EXISTS (SELECT 1 FROM detalles_anulacion_obligacion d WHERE d."ObligacionId" = o."Id");
---    b) deudas anuladas que tienen recibo
-SELECT count(*) AS anuladas_con_recibo
+--    b) deudas anuladas que tienen un recibo vigente (los recibos anulados no cuentan)
+SELECT count(*) AS anuladas_con_recibo_vigente
 FROM detalles_anulacion_obligacion d
-JOIN detalles_recibo r ON r."ObligacionId" = d."ObligacionId";
+JOIN detalles_recibo dr ON dr."ObligacionId" = d."ObligacionId"
+JOIN recibos r ON r."Id" = dr."ReciboId"
+WHERE r."Estado" <> 2;
 --    c) registros de anulación cuya deuda ya no está anulada
 SELECT count(*) AS registro_sin_deuda_anulada
 FROM detalles_anulacion_obligacion d
