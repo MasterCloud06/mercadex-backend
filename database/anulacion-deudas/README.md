@@ -18,6 +18,15 @@ la columna `recibos."Observaciones"` (`varchar(500)`, admite vacío). Los recibo
 observaciones y no cambian. PostgreSQL agrega una columna vacía sin reescribir la tabla. Script para
 revisarla: `20261023194916_AgregarObservacionesRecibo.sql`. Su `Down()` tampoco borra la columna.
 
+Migración `20261024105333_PermitirVolverARegistrarDeudaAnulada` (volver a registrar a mano una deuda anulada).
+**Solo cambia un índice**: el índice único `UX_obligaciones_unidad_concepto_periodo` (una deuda por caseta,
+concepto y mes) deja de contar las deudas anuladas (estado 3). No modifica ninguna fila. Se borra y se vuelve a
+crear dentro de la misma transacción; el índice nuevo es más permisivo que el anterior, así que siempre se puede
+crear con los datos existentes. Bloquea la tabla `obligaciones` solo los segundos que tarda en crearse (pocos
+miles de filas). Script para revisarla: `20261024105333_PermitirVolverARegistrarDeudaAnulada.sql`.
+Con esto, «Asignar una deuda» puede registrar otra vez una deuda anulada (la anulada queda igual, con su
+historial); el cargo mensual a varias casetas sigue sin regenerar las anuladas.
+
 ## Antes de desplegar
 
 1. **Respaldo** de la base de producción:
@@ -53,7 +62,10 @@ La API anterior no usa las tablas nuevas, así que **no hace falta revertir la b
 2. Dejar las tablas `anulaciones_obligaciones` y `detalles_anulacion_obligacion` como están (conservan el historial).
 3. Las deudas que se hayan anulado quedan en estado 3: la versión anterior ya las excluye de los saldos
    (todas sus consultas de saldo cuentan solo el estado 1) y las muestra como «Anulada» en el escritorio.
-4. Limitación de la versión anterior: su «Cargo mensual a varias casetas» no considera las deudas
+4. Si ya se volvió a registrar alguna deuda anulada, **no** revertir la migración del índice: su `Down()`
+   fallaría (habría dos filas con la misma caseta, concepto y mes, una anulada) y no cambiaría nada. La API
+   anterior funciona igual con el índice nuevo.
+5. Limitación de la versión anterior: su «Cargo mensual a varias casetas» no considera las deudas
    anuladas como existentes. Si se repite el cargo de un mes que tiene deudas anuladas, el índice único
    de la base lo rechaza (error 500, no se guarda nada de ese cargo). No se pierde ni duplica nada,
    pero ese mes no se puede volver a generar con la versión anterior.

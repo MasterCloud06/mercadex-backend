@@ -466,29 +466,22 @@ public sealed class CobranzaController : ControllerBase
         if (!await _db.Monedas.AsNoTracking().AnyAsync(m => m.Id == r.MonedaId && m.Activa, ct))
             return BadRequest(new { mensaje = "La moneda no existe o está inactiva." });
 
-        // Un concepto mensual no se cobra dos veces en el mismo período,
-        // ni se vuelve a cargar si esa deuda fue anulada.
-        var existente = r.Anio is null
-            ? null
+        // Un concepto mensual no se cobra dos veces en el mismo período.
+        // Si la deuda de ese período fue anulada, se puede volver a registrar
+        // aquí, a mano: la anulada queda tal cual, con su historial. (El cargo
+        // mensual a varias casetas, en cambio, no vuelve a generar las anuladas.)
+        var estados = r.Anio is null
+            ? new List<EstadoObligacion>()
             : await _db.Obligaciones.AsNoTracking()
                 .Where(o =>
                     o.UnidadComercialId == r.UnidadComercialId &&
                     o.ConceptoCobroId == r.ConceptoCobroId &&
                     o.PeriodoAnio == r.Anio &&
                     o.PeriodoMes == r.Mes)
-                .Select(o => (EstadoObligacion?)o.Estado)
-                .FirstOrDefaultAsync(ct);
+                .Select(o => o.Estado)
+                .ToListAsync(ct);
 
-        if (existente == EstadoObligacion.Anulada)
-        {
-            return Conflict(new
-            {
-                mensaje = $"La caseta {unidad.Codigo} tiene ese concepto para {r.Mes:00}/{r.Anio} anulado. " +
-                          "Una deuda anulada no se vuelve a cargar; revisa el historial de anulaciones."
-            });
-        }
-
-        if (existente is not null)
+        if (estados.Any(e => e != EstadoObligacion.Anulada))
         {
             return Conflict(new
             {
@@ -497,6 +490,8 @@ public sealed class CobranzaController : ControllerBase
             });
         }
 
+        var reemplazaAnulada = estados.Count > 0;
+
         var obligacion = new Obligacion(
             r.UnidadComercialId, r.ConceptoCobroId, r.MonedaId, r.Monto,
             r.FechaEmision, r.FechaVencimiento, r.Anio, r.Mes);
@@ -504,7 +499,20 @@ public sealed class CobranzaController : ControllerBase
         _db.Obligaciones.Add(obligacion);
         await _db.SaveChangesAsync(ct);
 
-        return Ok(new { id = obligacion.Id, mensaje = $"Deuda registrada para la caseta {unidad.Codigo}." });
+        if (reemplazaAnulada)
+        {
+            HttpContext.Detalle(
+                $"Caseta {unidad.Codigo}: se volvió a registrar la deuda de {r.Mes:00}/{r.Anio} " +
+                $"(la anterior está anulada y se conserva). Monto {r.Monto:N2}.");
+        }
+
+        return Ok(new
+        {
+            id = obligacion.Id,
+            mensaje = reemplazaAnulada
+                ? $"Deuda registrada para la caseta {unidad.Codigo}. La deuda anulada de {r.Mes:00}/{r.Anio} se conserva en el historial."
+                : $"Deuda registrada para la caseta {unidad.Codigo}."
+        });
     }
 
     // =====================================================================

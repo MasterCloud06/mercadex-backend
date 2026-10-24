@@ -767,7 +767,7 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                     b.HasIndex("UnidadComercialId", "ConceptoCobroId", "PeriodoAnio", "PeriodoMes")
                         .IsUnique()
                         .HasDatabaseName("UX_obligaciones_unidad_concepto_periodo")
-                        .HasFilter("\"PeriodoAnio\" IS NOT NULL AND \"PeriodoMes\" IS NOT NULL");
+                        .HasFilter("\"PeriodoAnio\" IS NOT NULL AND \"PeriodoMes\" IS NOT NULL AND \"Estado\" <> 3");
 
                     b.ToTable("obligaciones", (string)null);
                 });
