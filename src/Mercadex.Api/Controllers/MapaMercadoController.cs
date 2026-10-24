@@ -52,7 +52,7 @@ public sealed class MapaMercadoController : ControllerBase
 
         var pendientes = await _db.Obligaciones.AsNoTracking()
             .Where(o => o.Estado == EstadoObligacion.Pendiente)
-            .Select(o => new { o.UnidadComercialId, o.MonedaId, o.Monto, o.FechaEmision })
+            .Select(o => new { o.UnidadComercialId, o.MonedaId, o.Monto, o.FechaEmision, o.ConceptoCobroId })
             .ToListAsync(ct);
 
         var deudaPorUnidad = pendientes
@@ -95,6 +95,19 @@ public sealed class MapaMercadoController : ControllerBase
                         .GroupBy(o => o.MonedaId)
                         .Select(g => new { moneda = monedas.GetValueOrDefault(g.Key, "?"), total = g.Sum(o => o.Monto) })
                         .OrderBy(d => d.moneda == "BOB" ? 0 : 1)
+                        .ToList(),
+                    // Qué cuentas (conceptos de cobro) debe: para pintar el plano por cuenta.
+                    conceptos = lista
+                        .GroupBy(o => o.ConceptoCobroId)
+                        .Select(g => new
+                        {
+                            id = g.Key,
+                            obligaciones = g.Count(),
+                            deudas = g.GroupBy(o => o.MonedaId)
+                                .Select(m => new { moneda = monedas.GetValueOrDefault(m.Key, "?"), total = m.Sum(o => o.Monto) })
+                                .OrderBy(d => d.moneda == "BOB" ? 0 : 1)
+                                .ToList()
+                        })
                         .ToList()
                 };
             })
@@ -115,6 +128,25 @@ public sealed class MapaMercadoController : ControllerBase
             })
             .ToList();
 
+        // Cuentas con deuda pendiente y cuántas unidades las deben.
+        var idsConDeuda = pendientes.Select(o => o.ConceptoCobroId).Distinct().ToList();
+        var nombresConcepto = await _db.ConceptosCobro.AsNoTracking()
+            .Where(c => idsConDeuda.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => new { c.Codigo, c.Nombre }, ct);
+        var conceptos = pendientes
+            .GroupBy(o => o.ConceptoCobroId)
+            .Select(g => new
+            {
+                id = g.Key,
+                codigo = nombresConcepto.GetValueOrDefault(g.Key)?.Codigo ?? "",
+                nombre = nombresConcepto.GetValueOrDefault(g.Key)?.Nombre ?? "Sin nombre",
+                unidades = g.Select(o => o.UnidadComercialId).Distinct().Count(),
+                obligaciones = g.Count()
+            })
+            .OrderByDescending(c => c.unidades)
+            .ThenBy(c => c.nombre)
+            .ToList();
+
         Response.Headers["Cache-Control"] = "no-store";
 
         var plano = PlanoMercado.Leer();
@@ -123,6 +155,7 @@ public sealed class MapaMercadoController : ControllerBase
         {
             generado = DateTimeOffset.UtcNow.ToOffset(ZonaBolivia),
             bloques,
+            conceptos,
             // Plano oficial: medidas, pasillos y ubicaciones que el plano repite.
             plano = new
             {
