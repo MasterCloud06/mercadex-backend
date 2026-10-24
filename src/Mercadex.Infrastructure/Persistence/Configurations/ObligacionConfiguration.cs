@@ -39,8 +39,10 @@ public sealed class ObligacionConfiguration :
         builder.Ignore(x => x.EstaPagada);
         builder.Ignore(x => x.EstaAnulada);
 
-        // Una obligacion por caseta, concepto y periodo.
-        // No afecta obligaciones sin periodo mensual.
+        // Una obligacion vigente (pendiente o pagada) por caseta, concepto y
+        // periodo. No afecta obligaciones sin periodo mensual. Las anuladas
+        // (estado 3) quedan fuera: se puede volver a registrar a mano una
+        // deuda anulada; el cargo mensual masivo igual las respeta.
         builder.HasIndex(x => new
             {
                 x.UnidadComercialId,
@@ -52,7 +54,7 @@ public sealed class ObligacionConfiguration :
                 "UX_obligaciones_unidad_concepto_periodo")
             .IsUnique()
             .HasFilter(
-                "\"PeriodoAnio\" IS NOT NULL AND \"PeriodoMes\" IS NOT NULL");
+                "\"PeriodoAnio\" IS NOT NULL AND \"PeriodoMes\" IS NOT NULL AND \"Estado\" <> 3");
 
 
         builder.HasOne<UnidadComercial>()

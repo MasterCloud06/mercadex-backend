@@ -266,6 +266,12 @@ public sealed class ReportesCajaController : ControllerBase
             .OrderBy(x => x.formaPago)
             .ToList();
 
+        // Código de cada cuenta, para el diario por servicio.
+        var idsConcepto = movimientos.SelectMany(m => m.Conceptos.Select(c => c.ConceptoCobroId)).Distinct().ToList();
+        var codigosConcepto = await _db.ConceptosCobro.AsNoTracking()
+            .Where(c => idsConcepto.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Codigo, ct);
+
         var conceptos = movimientos
             .SelectMany(m =>
                 m.Conceptos.Select(d => new
@@ -285,6 +291,7 @@ public sealed class ReportesCajaController : ControllerBase
             {
                 monedaId = g.Key.MonedaId,
                 conceptoCobroId = g.Key.ConceptoCobroId,
+                codigo = codigosConcepto.GetValueOrDefault(g.Key.ConceptoCobroId, ""),
                 concepto = g.Key.Concepto,
                 cantidad = g.Count(),
                 total = g.Sum(x => x.Monto)
@@ -407,6 +414,115 @@ public sealed class ReportesCajaController : ControllerBase
             cobros,
             anulaciones,
             advertencias
+        });
+    }
+
+    // =============================================================
+    // HISTORIAL DE PAGOS DE UNA CASETA
+    // =============================================================
+
+    /// <summary>
+    /// Pagos de una caseta, cuenta por cuenta (fecha, recibo, cuenta, período
+    /// y monto), desde el primer pago o en un rango de fechas. Solo recibos
+    /// válidos: los anulados no se cuentan. Solo lectura.
+    /// </summary>
+    [HttpGet("caseta/{unidadId:guid}")]
+    public async Task<IActionResult> HistorialCaseta(
+        Guid unidadId,
+        [FromQuery] DateOnly? desde,
+        [FromQuery] DateOnly? hasta,
+        CancellationToken ct)
+    {
+        if (desde.HasValue && hasta.HasValue && desde.Value > hasta.Value)
+            return BadRequest(new { mensaje = "La fecha inicial no puede ser posterior a la final." });
+
+        var unidad = await _db.UnidadesComerciales.AsNoTracking()
+            .Where(u => u.Id == unidadId)
+            .Select(u => new { u.Codigo, u.Bloque })
+            .FirstOrDefaultAsync(ct);
+
+        if (unidad is null)
+            return NotFound(new { mensaje = "La caseta no existe." });
+
+        var titular = await (
+                from a in _db.AsignacionesSocioCaseta.AsNoTracking()
+                join so in _db.Socios.AsNoTracking() on a.SocioId equals so.Id
+                where a.UnidadComercialId == unidadId && a.Activa
+                select so.Nombres + " " + so.Apellidos)
+            .FirstOrDefaultAsync(ct);
+
+        var consulta = _db.Recibos.AsNoTracking()
+            .Include(x => x.Detalles)
+            .Where(x => x.UnidadComercialId == unidadId && x.Estado == EstadoRecibo.Emitido);
+
+        if (desde.HasValue)
+        {
+            var inicio = new DateTimeOffset(desde.Value.ToDateTime(TimeOnly.MinValue), ZonaBolivia).ToUniversalTime();
+            consulta = consulta.Where(x => x.FechaEmision >= inicio);
+        }
+
+        if (hasta.HasValue)
+        {
+            var fin = new DateTimeOffset(hasta.Value.AddDays(1).ToDateTime(TimeOnly.MinValue), ZonaBolivia).ToUniversalTime();
+            consulta = consulta.Where(x => x.FechaEmision < fin);
+        }
+
+        var recibos = await consulta
+            .OrderBy(x => x.FechaEmision)
+            .ThenBy(x => x.Numero)
+            .Take(5001)
+            .ToListAsync(ct);
+
+        if (recibos.Count > 5000)
+            return BadRequest(new { mensaje = "Demasiados recibos para una sola consulta. Seleccione un rango menor." });
+
+        var pagoIds = recibos.Select(x => x.PagoId).Distinct().ToList();
+        var pagos = await _db.Pagos.AsNoTracking()
+            .Where(x => pagoIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        var monedas = await _db.Monedas.AsNoTracking()
+            .ToDictionaryAsync(m => m.Id, m => m.Codigo, ct);
+
+        // Igual que el diario: solo cuenta el recibo con su pago registrado.
+        var lineas = recibos
+            .Where(r => pagos.TryGetValue(r.PagoId, out var p) && p.Estado == EstadoPago.Registrado)
+            .SelectMany(r => r.Detalles.Select(d => new
+            {
+                fecha = r.FechaEmision.ToOffset(ZonaBolivia).ToString("dd/MM/yyyy"),
+                fechaUtc = r.FechaEmision,
+                numeroRecibo = r.Numero,
+                concepto = d.Concepto,
+                periodo = d.PeriodoAnio is { } anio && d.PeriodoMes is { } mes ? $"{mes:00}/{anio}" : null,
+                moneda = monedas.GetValueOrDefault(pagos[r.PagoId].MonedaId, "?"),
+                monto = d.Monto
+            }))
+            .ToList();
+
+        var totales = lineas
+            .GroupBy(l => new { l.concepto, l.moneda })
+            .Select(g => new { g.Key.concepto, g.Key.moneda, cantidad = g.Count(), total = g.Sum(l => l.monto) })
+            .OrderBy(t => t.moneda == "BOB" ? 0 : 1)
+            .ThenByDescending(t => t.total)
+            .ToList();
+
+        Response.Headers["Cache-Control"] = "no-store";
+
+        return Ok(new
+        {
+            caseta = unidad.Codigo,
+            bloque = unidad.Bloque,
+            titular,
+            desde = desde?.ToString("yyyy-MM-dd"),
+            hasta = hasta?.ToString("yyyy-MM-dd"),
+            recibos = lineas.Select(l => l.numeroRecibo).Distinct().Count(),
+            lineas,
+            totales,
+            totalPorMoneda = lineas
+                .GroupBy(l => l.moneda)
+                .Select(g => new { moneda = g.Key, total = g.Sum(l => l.monto) })
+                .OrderBy(t => t.moneda == "BOB" ? 0 : 1)
+                .ToList()
         });
     }
 

@@ -374,11 +374,6 @@ await prueba('Repetir la generación no recrea deudas anuladas', async () => {
   igual(previa.listas, 0, 'casetas listas para generar');
   igual(previa.yaTenian, 8, 'casetas que ya tienen (incluye anuladas)');
   igual(await estado(cargoMes(11)), 409, 'cargo masivo');
-  const individual = await estado(A('POST', '/api/cobranza/cargo', {
-    unidadComercialId: unidad(1), conceptoCobroId: concepto, monedaId: bob.id, monto: 100,
-    fechaEmision: '2026-11-01', fechaVencimiento: null, anio: 2026, mes: 11
-  }));
-  igual(individual, 409, 'cargo individual');
   await A('POST', '/api/cobranza/tarifas-masivo', { conceptoCobroId: concepto, monedaId: bob.id, monto: 100, alcance: 'bloque', bloque, pasilloId: null, soloSinTarifa: false });
   const tarifas = await A('GET', `/api/tarifas-unidad/vista-previa?conceptoCobroId=${concepto}&anio=2026&mes=11`);
   const z = tarifas.detalle.filter(x => x.caseta.endsWith(marca));
@@ -386,6 +381,27 @@ await prueba('Repetir la generación no recrea deudas anuladas', async () => {
   verdad(z.every(x => x.estado === 'DeudaExistente'), 'generación por tarifas: todas figuran con deuda existente (' + z.map(x => x.estado) + ')');
   const todas = await P('GET', `/deudas?bloque=${bloque}&conceptoCobroId=${concepto}&anio=2026&mes=11`);
   igual(todas.total, 8, 'siguen siendo 8 deudas de noviembre');
+});
+
+await prueba('Volver a registrar a mano una deuda anulada: se crea una nueva y la anulada se conserva', async () => {
+  const antes = await P('GET', `/deudas?bloque=${bloque}&conceptoCobroId=${concepto}&anio=2026&mes=11`);
+  const anulada = antes.deudas.find(d => d.caseta === `Z1-${marca}`);
+  igual(anulada?.estado, 'Anulada', 'la de noviembre de Z1 está anulada');
+  const cargo = { unidadComercialId: unidad(1), conceptoCobroId: concepto, monedaId: bob.id, monto: 125,
+    fechaEmision: '2026-11-01', fechaVencimiento: null, anio: 2026, mes: 11 };
+  const r = await A('POST', '/api/cobranza/cargo', cargo);
+  verdad(r.mensaje.includes('se conserva'), 'mensaje: ' + r.mensaje);
+  igual(await estado(A('POST', '/api/cobranza/cargo', cargo)), 409, 'una segunda vez (ya tiene una vigente)');
+  const despues = await P('GET', `/deudas?bloque=${bloque}&conceptoCobroId=${concepto}&anio=2026&mes=11`);
+  const deZ1 = despues.deudas.filter(d => d.caseta === `Z1-${marca}`);
+  igual(deZ1.length, 2, 'Z1 tiene la anulada y la nueva');
+  verdad(deZ1.some(d => d.id === anulada.id && d.estado === 'Anulada' && d.monto === anulada.monto), 'la anulada sigue igual');
+  verdad(deZ1.some(d => d.id === r.id && d.estado === 'Pendiente' && d.monto === 125), 'la nueva está pendiente');
+  // El cargo mensual masivo sigue sin regenerar las demás anuladas.
+  const q = `conceptoCobroId=${concepto}&anio=2026&mes=11&alcance=bloque&bloque=${bloque}&modoMonto=fijo&monto=100&monedaId=${bob.id}&fechaEmision=2026-11-01`;
+  igual((await A('GET', `/api/cobranza/cargo-masivo/vista-previa?${q}`)).listas, 0, 'cargo masivo: ninguna lista');
+  igual(await estado(cargoMes(11)), 409, 'cargo masivo');
+  igual((await P('GET', `/deudas?bloque=${bloque}&conceptoCobroId=${concepto}&anio=2026&mes=11`)).total, 9, 'noviembre: 8 + la nueva');
 });
 
 await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se pueden cobrar después)', async () => {
