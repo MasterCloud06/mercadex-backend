@@ -122,6 +122,32 @@ public sealed class Obligacion : Entity
     public EstadoObligacion Estado { get; private set; }
 
 
+    // Pagos parciales: lo abonado con recibos vigentes mientras la deuda
+    // sigue pendiente. Las deudas pagadas antes de los pagos parciales
+    // tienen 0 aquí (y Estado Pagada): su saldo también es 0.
+
+    public decimal MontoPagado { get; private set; }
+
+
+    /// <summary>Lo que falta pagar: solo una deuda pendiente tiene saldo.</summary>
+    public decimal Saldo =>
+        Estado == EstadoObligacion.Pendiente ? Monto - MontoPagado : 0m;
+
+
+    public bool TieneAbonos =>
+        Estado == EstadoObligacion.Pendiente && MontoPagado > 0;
+
+
+    /// <summary>
+    /// Lo pagado con recibos vigentes. Una deuda pagada antes de los pagos
+    /// parciales tiene MontoPagado 0: estaba pagada completa.
+    /// </summary>
+    public decimal Pagado =>
+        Estado == EstadoObligacion.Pagada && MontoPagado == 0 ? Monto
+        : Estado is EstadoObligacion.Pagada or EstadoObligacion.Pendiente ? MontoPagado
+        : 0m;
+
+
     public bool EstaPendiente =>
         Estado == EstadoObligacion.Pendiente;
 
@@ -146,6 +172,12 @@ public sealed class Obligacion : Entity
                 "No se puede modificar una obligacion pagada o anulada.");
         }
 
+        if (MontoPagado > 0)
+        {
+            throw new InvalidOperationException(
+                "No se puede modificar una obligacion con pagos parciales.");
+        }
+
         if (nuevoMonto <= 0 ||
             decimal.Round(nuevoMonto, 2) != nuevoMonto)
         {
@@ -163,6 +195,7 @@ public sealed class Obligacion : Entity
         Monto = nuevoMonto;
     }
 
+    /// <summary>Paga todo lo que falta.</summary>
     public void MarcarComoPagada()
     {
         if (Estado != EstadoObligacion.Pendiente)
@@ -171,7 +204,64 @@ public sealed class Obligacion : Entity
                 "Solamente una obligación pendiente puede pagarse.");
         }
 
-        Estado = EstadoObligacion.Pagada;
+        Abonar(Saldo);
+    }
+
+
+    /// <summary>
+    /// Pago total o parcial. Si con este abono se completa el monto, la
+    /// deuda queda pagada; si no, sigue pendiente con el saldo que falta.
+    /// </summary>
+    public void Abonar(decimal monto)
+    {
+        if (Estado != EstadoObligacion.Pendiente)
+        {
+            throw new InvalidOperationException(
+                "Solamente una obligación pendiente puede pagarse.");
+        }
+
+        if (monto <= 0 || decimal.Round(monto, 2) != monto)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(monto),
+                "El monto a pagar debe ser mayor a cero y tener maximo dos decimales.");
+        }
+
+        if (monto > Saldo)
+        {
+            throw new InvalidOperationException(
+                "El monto a pagar no puede superar el saldo de la deuda.");
+        }
+
+        MontoPagado += monto;
+
+        if (MontoPagado == Monto)
+        {
+            Estado = EstadoObligacion.Pagada;
+        }
+    }
+
+
+    /// <summary>
+    /// Al anular un recibo: se devuelve lo que ese recibo abonó y la deuda
+    /// queda pendiente con ese saldo.
+    /// </summary>
+    public void RevertirAbono(decimal monto)
+    {
+        if (Estado is not (EstadoObligacion.Pendiente or EstadoObligacion.Pagada))
+        {
+            throw new InvalidOperationException(
+                "Solamente una obligación pagada o con pagos parciales puede restaurarse.");
+        }
+
+        if (monto <= 0 || monto > Pagado)
+        {
+            throw new InvalidOperationException(
+                "El monto a restituir no coincide con lo pagado de la deuda.");
+        }
+
+        MontoPagado = Pagado - monto;
+        Estado = EstadoObligacion.Pendiente;
     }
 
 
@@ -188,10 +278,17 @@ public sealed class Obligacion : Entity
                 "Solamente una obligación pendiente puede anularse.");
         }
 
+        if (MontoPagado > 0)
+        {
+            throw new InvalidOperationException(
+                "No se puede anular una obligación con pagos parciales.");
+        }
+
         Estado = EstadoObligacion.Anulada;
     }
 
 
+    /// <summary>Vuelve a dejar pendiente todo el monto (sin abonos).</summary>
     public void RestaurarComoPendiente()
     {
         if (Estado != EstadoObligacion.Pagada)
@@ -200,6 +297,7 @@ public sealed class Obligacion : Entity
                 "Solamente una obligación pagada puede restaurarse.");
         }
 
+        MontoPagado = 0;
         Estado = EstadoObligacion.Pendiente;
     }
 }

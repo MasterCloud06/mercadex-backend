@@ -404,6 +404,80 @@ await prueba('Volver a registrar a mano una deuda anulada: se crea una nueva y l
   igual((await P('GET', `/deudas?bloque=${bloque}&conceptoCobroId=${concepto}&anio=2026&mes=11`)).total, 9, 'noviembre: 8 + la nueva');
 });
 
+// ---------------------------------------------------------------- PAGOS PARCIALES
+await prueba('Pago parcial: abono, saldo en todas partes, no anulable, y anular recibos devuelve solo su parte', async () => {
+  await A('POST', '/api/cobranza/cargo', {
+    unidadComercialId: unidad(2), conceptoCobroId: concepto, monedaId: bob.id, monto: 750,
+    fechaEmision: '2027-01-01', fechaVencimiento: null, anio: 2027, mes: 1
+  });
+  const d = await deuda(2, 1);
+  const pendienteDe = async () => (await A('GET', `/api/Obligaciones/unidad/${unidad(2)}/pendientes`)).find(o => o.id === d.id);
+  const cobro = (monto, item) => A('POST', '/api/caja/cobrar', {
+    numeroRecibo: 0, unidadComercialId: unidad(2), monedaId: bob.id, monto, formaPago: 1, nombrePagador: 'Pagador Prueba',
+    tipoCambio: 1, referencia: null, items: [{ obligacionId: d.id, nombreConcepto: d.concepto, ...item }]
+  });
+
+  // Más que el saldo, o un total que no coincide: no se cobra nada.
+  verdad(await estado(cobro(751, { monto: 751 })) >= 400, 'más que el saldo');
+  verdad(await estado(cobro(750, { monto: 300 })) >= 400, 'total distinto al abono');
+  igual((await pendienteDe()).saldo, 750, 'sin cobros: saldo completo');
+
+  const primero = await cobro(300, { monto: 300 });
+  igual(primero.recibo.total, 300, 'recibo del abono');
+  igual(primero.recibo.detalles[0].monto, 300, 'detalle del abono');
+  let o = await pendienteDe();
+  igual([o.estado, o.monto, o.montoPagado, o.saldo], ['Pendiente', 750, 300, 450], 'deuda con abono');
+
+  // El saldo se ve igual en la app del socio y en la lista de deudores.
+  const enApp = (await deudasApp()).find(x => x.id === d.id);
+  igual([enApp.monto, enApp.montoOriginal, enApp.pagado], [450, 750, 300], 'app del socio');
+  const deudores = await A('GET', `/api/reportes/deudores?caseta=Z2-${marca}&conceptos=${concepto}`);
+  const fila = deudores.filas.find(f => f.codigo === `Z2-${marca}`);
+  verdad(fila.deudas.some(x => x.periodo === '01/2027' && x.monto === 450), 'deudores: saldo 450');
+
+  // Con un abono no se puede anular la deuda.
+  const previa = await P('POST', '/vista-previa', { obligacionIds: [d.id] });
+  igual([previa.cantidad, previa.bloqueadas.length], [0, 1], 'no anulable con abono');
+
+  // Pagar el resto sin indicar monto: todo el saldo.
+  const segundo = await cobro(450, {});
+  igual(segundo.recibo.total, 450, 'recibo del resto');
+  verdad(!(await A('GET', `/api/Obligaciones/unidad/${unidad(2)}/pendientes`)).some(x => x.id === d.id), 'pagada: ya no está pendiente');
+
+  // Anular el primer recibo devuelve solo los 300.
+  await A('PUT', `/api/caja/recibos/${primero.recibo.id}/anular`, { motivo: 'Prueba: anular abono' });
+  o = await pendienteDe();
+  igual([o.estado, o.montoPagado, o.saldo], ['Pendiente', 450, 300], 'tras anular el abono');
+
+  await A('PUT', `/api/caja/recibos/${segundo.recibo.id}/anular`, { motivo: 'Prueba: anular el resto' });
+  o = await pendienteDe();
+  igual([o.estado, o.montoPagado, o.saldo, o.monto], ['Pendiente', 0, 750, 750], 'tras anular los dos');
+});
+
+await prueba('Pago parcial: anular un abono y cobrar otro a la vez no pierde ninguno', async () => {
+  const resultados = [];
+  for (let mes = 2; mes <= 6; mes++) {
+    await A('POST', '/api/cobranza/cargo', {
+      unidadComercialId: unidad(2), conceptoCobroId: concepto, monedaId: bob.id, monto: 600,
+      fechaEmision: '2028-01-01', fechaVencimiento: null, anio: 2028, mes
+    });
+    const d = (await deudasDe(2, '&anio=2028')).find(x => x.mes === mes);
+    const cobro = monto => A('POST', '/api/caja/cobrar', {
+      numeroRecibo: 0, unidadComercialId: unidad(2), monedaId: bob.id, monto, formaPago: 1, nombrePagador: 'Pagador Prueba',
+      tipoCambio: 1, referencia: null, items: [{ obligacionId: d.id, nombreConcepto: d.concepto, monto }]
+    });
+    const primero = await cobro(200);
+    await Promise.all([
+      A('PUT', `/api/caja/recibos/${primero.recibo.id}/anular`, { motivo: 'Prueba: carrera de abonos' }),
+      cobro(100)
+    ]);
+    const o = (await A('GET', `/api/Obligaciones/unidad/${unidad(2)}/pendientes`)).find(x => x.id === d.id);
+    resultados.push(`${o.montoPagado}/${o.saldo}`);
+    igual([o.montoPagado, o.saldo], [100, 500], `mes ${mes}: queda solo el abono de 100`);
+  }
+  console.log('      (pagado/saldo en cada carrera: ' + resultados.join(', ') + ')');
+});
+
 await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se pueden cobrar después)', async () => {
   const datos = {
     conceptoCobroId: concepto, anio: 2027, mes: 3, alcance: 'bloque', bloque, modoMonto: 'fijo', monto: 70,

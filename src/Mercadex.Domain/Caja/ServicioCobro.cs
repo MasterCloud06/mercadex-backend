@@ -52,6 +52,20 @@ public static class ServicioCobro
                 "Todas las obligaciones deben estar pendientes.");
         }
 
+        // Pago total o parcial: nunca más que el saldo de cada deuda.
+        if (lista.Any(x => x.APagar <= 0 || decimal.Round(x.APagar, 2) != x.APagar))
+        {
+            throw new ArgumentException(
+                "El monto a pagar de cada deuda debe ser mayor a cero y tener maximo dos decimales.",
+                nameof(items));
+        }
+
+        if (lista.Any(x => x.APagar > x.Obligacion.Saldo))
+        {
+            throw new InvalidOperationException(
+                "El monto a pagar no puede superar el saldo de la deuda.");
+        }
+
         var unidadComercialId =
             lista[0].Obligacion.UnidadComercialId;
 
@@ -73,7 +87,7 @@ public static class ServicioCobro
         }
 
         var total =
-            lista.Sum(x => x.Obligacion.Monto);
+            lista.Sum(x => x.APagar);
 
         var pago = new Pago(
             monedaId,
@@ -90,7 +104,7 @@ public static class ServicioCobro
                     x.Obligacion.Id,
                     x.Obligacion.ConceptoCobroId,
                     x.NombreConcepto,
-                    x.Obligacion.Monto,
+                    x.APagar,
                     x.Obligacion.PeriodoAnio,
                     x.Obligacion.PeriodoMes))
             .ToList();
@@ -104,7 +118,7 @@ public static class ServicioCobro
 
         foreach (var item in lista)
         {
-            item.Obligacion.MarcarComoPagada();
+            item.Obligacion.Abonar(item.APagar);
         }
 
         return new ResultadoCobro(
@@ -168,7 +182,9 @@ public static class ServicioCobro
                 "Las obligaciones proporcionadas no coinciden con las del recibo.");
         }
 
-        if (listaObligaciones.Any(x => !x.EstaPagada))
+        // Cada deuda debe tener pagado al menos lo que este recibo pagó de ella.
+        var pagadoPorRecibo = recibo.Detalles.ToDictionary(x => x.ObligacionId, x => x.Monto);
+        if (listaObligaciones.Any(x => x.Pagado < pagadoPorRecibo[x.Id]))
         {
             throw new InvalidOperationException(
                 "Todas las obligaciones del recibo deben estar pagadas antes de anularlo.");
@@ -180,9 +196,10 @@ public static class ServicioCobro
 
         pago.Anular();
 
+        // Cada deuda recupera lo que este recibo pagó de ella (todo o una parte).
         foreach (var obligacion in listaObligaciones)
         {
-            obligacion.RestaurarComoPendiente();
+            obligacion.RevertirAbono(pagadoPorRecibo[obligacion.Id]);
         }
     }
 }

@@ -58,7 +58,7 @@ public sealed class CasetasController : ControllerBase
         var deudas = (await _db.Obligaciones.AsNoTracking()
                 .Where(o => o.Estado == EstadoObligacion.Pendiente)
                 .GroupBy(o => new { o.UnidadComercialId, o.MonedaId })
-                .Select(g => new { g.Key.UnidadComercialId, g.Key.MonedaId, Cantidad = g.Count(), Total = g.Sum(o => o.Monto) })
+                .Select(g => new { g.Key.UnidadComercialId, g.Key.MonedaId, Cantidad = g.Count(), Total = g.Sum(o => o.Monto - o.MontoPagado) })
                 .ToListAsync(ct))
             .GroupBy(d => d.UnidadComercialId)
             .ToDictionary(g => g.Key, g => g.ToList());
@@ -175,7 +175,7 @@ public sealed class CasetasController : ControllerBase
         var deudas = await _db.Obligaciones.AsNoTracking()
             .Where(o => o.UnidadComercialId == id && o.Estado == EstadoObligacion.Pendiente)
             .GroupBy(o => o.MonedaId)
-            .Select(g => new { MonedaId = g.Key, Cantidad = g.Count(), Total = g.Sum(o => o.Monto) })
+            .Select(g => new { MonedaId = g.Key, Cantidad = g.Count(), Total = g.Sum(o => o.Monto - o.MontoPagado) })
             .ToListAsync(ct);
 
         var pasillo = u.PasilloId is null

@@ -125,20 +125,23 @@ public async Task<ResultadoCobroDto> ProcesarCobroAsync(
                 "La forma de pago no es valida.");
         }
 
-        var totalEsperado = obligaciones.Sum(x => x.Monto);
+        // Pago total o parcial: cada deuda paga lo indicado o, si no se
+        // indica, todo su saldo. El importe debe coincidir con esa suma.
+        var items = obligaciones
+            .Select(o =>
+            {
+                var solicitud = solicitudes.First(x => x.ObligacionId == o.Id);
+                return new ItemCobro(o, solicitud.NombreConcepto, solicitud.Monto);
+            })
+            .ToList();
+
+        var totalEsperado = items.Sum(x => x.APagar);
 
         if (dto.Monto != totalEsperado)
         {
             throw new InvalidOperationException(
                 "El importe no coincide con las obligaciones seleccionadas.");
         }
-
-        var items = obligaciones
-            .Select(o => new ItemCobro(
-                o,
-                solicitudes.First(x =>
-                    x.ObligacionId == o.Id).NombreConcepto))
-            .ToList();
 
         // El número se asigna en el servidor.
         // El valor NumeroRecibo enviado por el escritorio se ignora.
@@ -311,13 +314,21 @@ anuladoPor = anuladoPor.Trim();
             var obligacion = await _obligacionRepository
                 .GetByIdAsync(detalle.ObligacionId);
 
+            // Debe tener pagado al menos lo que este recibo pagó de ella
+            // (todo, o un abono si fue un pago parcial).
+            var pagado = obligacion is null
+                ? 0m
+                : string.Equals(obligacion.Estado, "Pagada", StringComparison.OrdinalIgnoreCase)
+                    ? (obligacion.MontoPagado == 0 ? obligacion.Monto : obligacion.MontoPagado)
+                    : string.Equals(obligacion.Estado, "Pendiente", StringComparison.OrdinalIgnoreCase)
+                        ? obligacion.MontoPagado
+                        : 0m;
+
             if (obligacion is null ||
                 obligacion.UnidadComercialId !=
                     recibo.UnidadComercialId ||
-                !string.Equals(
-                    obligacion.Estado,
-                    "Pagada",
-                    StringComparison.OrdinalIgnoreCase))
+                pagado < detalle.Monto ||
+                detalle.Monto <= 0)
             {
                 throw new InvalidOperationException(
                     "No se puede restituir una de las " +
@@ -355,8 +366,9 @@ var reciboAnulado =
         {
             var restaurada =
                 await _obligacionRepository
-                    .RestaurarComoPendienteAsync(
-                        detalle.ObligacionId);
+                    .RevertirAbonoAsync(
+                        detalle.ObligacionId,
+                        detalle.Monto);
 
             if (!restaurada)
             {

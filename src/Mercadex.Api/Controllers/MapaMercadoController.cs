@@ -52,7 +52,7 @@ public sealed class MapaMercadoController : ControllerBase
 
         var pendientes = await _db.Obligaciones.AsNoTracking()
             .Where(o => o.Estado == EstadoObligacion.Pendiente)
-            .Select(o => new { o.UnidadComercialId, o.MonedaId, o.Monto, o.FechaEmision, o.ConceptoCobroId })
+            .Select(o => new { o.UnidadComercialId, o.MonedaId, Monto = o.Monto - o.MontoPagado, o.FechaEmision, o.ConceptoCobroId })
             .ToListAsync(ct);
 
         var deudaPorUnidad = pendientes

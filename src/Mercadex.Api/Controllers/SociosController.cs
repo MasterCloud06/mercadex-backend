@@ -134,7 +134,7 @@ public sealed class SociosController : ControllerBase
                 join m in _db.Monedas.AsNoTracking() on o.MonedaId equals m.Id
                 where o.Estado == EstadoObligacion.Pendiente
                 group o by new { o.UnidadComercialId, m.Codigo } into g
-                select new { g.Key.UnidadComercialId, Moneda = g.Key.Codigo, Monto = g.Sum(x => x.Monto), Cantidad = g.Count() })
+                select new { g.Key.UnidadComercialId, Moneda = g.Key.Codigo, Monto = g.Sum(x => x.Monto - x.MontoPagado), Cantidad = g.Count() })
             .ToListAsync(ct);
 
         var fallecidos = await FallecidosAsync(ct);
@@ -247,7 +247,7 @@ public sealed class SociosController : ControllerBase
                 join m in _db.Monedas.AsNoTracking() on o.MonedaId equals m.Id
                 where o.Estado == EstadoObligacion.Pendiente && idsActuales.Contains(o.UnidadComercialId)
                 group o by new { o.UnidadComercialId, m.Codigo } into g
-                select new { g.Key.UnidadComercialId, Moneda = g.Key.Codigo, Monto = g.Sum(x => x.Monto), Cantidad = g.Count() })
+                select new { g.Key.UnidadComercialId, Moneda = g.Key.Codigo, Monto = g.Sum(x => x.Monto - x.MontoPagado), Cantidad = g.Count() })
             .ToListAsync(ct);
 
         var kardex = await _db.KardexCasetas.AsNoTracking()

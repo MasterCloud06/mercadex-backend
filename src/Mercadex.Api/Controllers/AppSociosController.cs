@@ -174,7 +174,7 @@ public sealed class AppSociosController : ControllerBase
                 where ids.Contains(o.UnidadComercialId) && o.Estado == EstadoObligacion.Pendiente
                 select new
                 {
-                    o.Id, o.UnidadComercialId, o.MonedaId, o.Monto, o.FechaEmision,
+                    o.Id, o.UnidadComercialId, o.MonedaId, o.Monto, o.MontoPagado, o.FechaEmision,
                     o.FechaVencimiento, o.PeriodoAnio, o.PeriodoMes, Concepto = c.Nombre
                 })
             .ToListAsync(ct);
@@ -194,7 +194,10 @@ public sealed class AppSociosController : ControllerBase
                     id = o.Id,
                     concepto = o.Concepto,
                     periodo = Periodo(o.PeriodoAnio, o.PeriodoMes),
-                    monto = o.Monto,
+                    // Lo que falta pagar (con pagos parciales, menos que el monto).
+                    monto = o.Monto - o.MontoPagado,
+                    montoOriginal = o.Monto,
+                    pagado = o.MontoPagado,
                     monedaId = o.MonedaId,
                     moneda = monedas.GetValueOrDefault(o.MonedaId, "?"),
                     fechaEmision = o.FechaEmision,
@@ -354,7 +357,7 @@ public sealed class AppSociosController : ControllerBase
 
         var obligaciones = await _db.Obligaciones.AsNoTracking()
             .Where(o => ids.Contains(o.Id))
-            .Select(o => new { o.Id, o.UnidadComercialId, o.MonedaId, o.Monto, o.Estado })
+            .Select(o => new { o.Id, o.UnidadComercialId, o.MonedaId, Saldo = o.Monto - o.MontoPagado, o.Estado })
             .ToListAsync(ct);
 
         if (obligaciones.Count != ids.Count || obligaciones.Any(o => !unidades.Contains(o.UnidadComercialId)))
@@ -377,7 +380,7 @@ public sealed class AppSociosController : ControllerBase
             socio.Id,
             obligaciones[0].UnidadComercialId,
             obligaciones[0].MonedaId,
-            obligaciones.Sum(o => o.Monto),
+            obligaciones.Sum(o => o.Saldo),
             ids,
             r.Referencia ?? "",
             comprobante,
