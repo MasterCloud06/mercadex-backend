@@ -27,6 +27,12 @@ miles de filas). Script para revisarla: `20261024105333_PermitirVolverARegistrar
 Con esto, «Asignar una deuda» puede registrar otra vez una deuda anulada (la anulada queda igual, con su
 historial); el cargo mensual a varias casetas sigue sin regenerar las anuladas.
 
+Migración `20261030065831_AgregarPagosParciales` (pagos parciales). **Solo agrega** la columna `obligaciones."MontoPagado"`
+(`numeric(18,2)`, 0 por defecto): lo abonado a una deuda pendiente. Ninguna fila cambia de monto ni de estado;
+todas quedan con 0 (las pagadas antes de esta versión tienen 0 y estado Pagada: la API las trata como pagadas
+completas). PostgreSQL agrega una columna con valor por defecto sin reescribir la tabla. Script para revisarla:
+`20261030065831_AgregarPagosParciales.sql`. Su `Down()` no borra la columna (conserva los abonos).
+
 ## Antes de desplegar
 
 1. **Respaldo** de la base de producción:

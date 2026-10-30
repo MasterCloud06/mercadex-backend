@@ -191,7 +191,7 @@ public sealed class DashboardController : ControllerBase
         var pendientes = await _db.Obligaciones
             .AsNoTracking()
             .Where(o => o.Estado == EstadoObligacion.Pendiente)
-            .Select(o => new { o.UnidadComercialId, o.MonedaId, o.Monto, o.FechaEmision })
+            .Select(o => new { o.UnidadComercialId, o.MonedaId, Monto = o.Monto - o.MontoPagado, o.FechaEmision })
             .ToListAsync(ct);
 
         var deuda = pendientes

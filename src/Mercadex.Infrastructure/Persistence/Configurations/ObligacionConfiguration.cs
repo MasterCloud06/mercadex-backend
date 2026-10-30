@@ -22,6 +22,16 @@ public sealed class ObligacionConfiguration :
             .HasPrecision(18, 2)
             .IsRequired();
 
+        // Pagos parciales: lo abonado mientras la deuda sigue pendiente.
+        builder.Property(x => x.MontoPagado)
+            .HasPrecision(18, 2)
+            .HasDefaultValue(0m)
+            .IsRequired();
+
+        builder.Ignore(x => x.Saldo);
+        builder.Ignore(x => x.TieneAbonos);
+        builder.Ignore(x => x.Pagado);
+
         builder.Property(x => x.FechaEmision)
             .IsRequired();
 

@@ -117,7 +117,14 @@ public sealed class CobranzaController : ControllerBase
         // Resumen sobre todo el resultado, no solo lo que se muestra.
         var resumen = await consulta
             .GroupBy(x => new { x.o.Estado, x.m.Codigo })
-            .Select(g => new { estado = g.Key.Estado, moneda = g.Key.Codigo, cantidad = g.Count(), monto = g.Sum(x => x.o.Monto) })
+            .Select(g => new
+            {
+                estado = g.Key.Estado,
+                moneda = g.Key.Codigo,
+                cantidad = g.Count(),
+                // Pendientes: lo que falta pagar.
+                monto = g.Sum(x => x.o.Estado == EstadoObligacion.Pendiente ? x.o.Monto - x.o.MontoPagado : x.o.Monto)
+            })
             .ToListAsync(ct);
 
         var filas = await consulta
@@ -138,6 +145,9 @@ public sealed class CobranzaController : ControllerBase
                 anio = x.o.PeriodoAnio,
                 mes = x.o.PeriodoMes,
                 monto = x.o.Monto,
+                // Pagos parciales: lo abonado y lo que falta.
+                pagado = x.o.Estado == EstadoObligacion.Pagada && x.o.MontoPagado == 0 ? x.o.Monto : x.o.MontoPagado,
+                saldo = x.o.Estado == EstadoObligacion.Pendiente ? x.o.Monto - x.o.MontoPagado : 0m,
                 moneda = x.m.Codigo,
                 emision = x.o.FechaEmision,
                 vencimiento = x.o.FechaVencimiento,

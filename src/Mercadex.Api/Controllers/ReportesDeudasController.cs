@@ -92,7 +92,8 @@ public sealed class ReportesDeudasController : ControllerBase
                 x.o.PeriodoAnio,
                 x.o.PeriodoMes,
                 Moneda = x.m.Codigo,
-                x.o.Monto
+                // Lo que falta pagar (con pagos parciales, menos que el monto).
+                Monto = x.o.Monto - x.o.MontoPagado
             })
             .ToListAsync(ct);
 

@@ -51,7 +51,11 @@ public sealed class ObligacionRepository : IObligacionRepository
                 o.PeriodoAnio,
                 o.PeriodoMes,
                 o.Estado.ToString()
-            ))
+            )
+            {
+                MontoPagado = o.MontoPagado,
+                Saldo = o.Estado == EstadoObligacion.Pendiente ? o.Monto - o.MontoPagado : 0m
+            })
             .FirstOrDefaultAsync();
     }
 
@@ -131,6 +135,32 @@ public async Task<IReadOnlyList<Obligacion>> ObtenerPorIdsAsync(
         return true;
     }
 
+    public async Task<bool> RevertirAbonoAsync(Guid id, decimal monto)
+    {
+        // FOR UPDATE: con pagos parciales, un cobro y la anulación de otro
+        // recibo pueden tocar la misma deuda a la vez; se espera al otro y se
+        // parte de lo que dejó (si no, se perdería su abono).
+        var obligacion = await _context.Obligaciones
+            .FromSqlInterpolated($"""
+                SELECT *
+                FROM obligaciones
+                WHERE "Id" = {id}
+                FOR UPDATE
+                """)
+            .FirstOrDefaultAsync();
+
+        if (obligacion is null)
+        {
+            return false;
+        }
+
+        obligacion.RevertirAbono(monto);
+
+        await _context.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<bool> RestaurarComoPendienteAsync(Guid id)
     {
         var obligacion = await _context.Obligaciones
@@ -180,7 +210,11 @@ public async Task<IEnumerable<ObligacionDto>> ObtenerPendientesPorUnidadAsync(
             o.PeriodoAnio,
             o.PeriodoMes,
             o.Estado.ToString()
-        ))
+        )
+        {
+            MontoPagado = o.MontoPagado,
+            Saldo = o.Monto - o.MontoPagado
+        })
         .ToListAsync();
 
     if (pendientes.Count == 0)
