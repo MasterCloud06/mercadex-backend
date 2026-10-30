@@ -37,10 +37,25 @@ public sealed class ReportesCajaController : ControllerBase
         [FromQuery] DateOnly? hasta,
         [FromQuery] Guid? conceptoId,
         [FromQuery] string? bloque,
+        [FromQuery] int? periodoAnio,
+        [FromQuery] int? periodoMes,
         CancellationToken ct)
     {
         if (!EntornoPermitido())
             return StatusCode(403);
+
+        // Período de la deuda (por ejemplo, la mensualidad de agosto): se cuentan
+        // solo los conceptos de ese mes, sin importar la fecha en que se pagaron.
+        if (periodoAnio.HasValue != periodoMes.HasValue || periodoMes is < 1 or > 12 || periodoAnio is < 2000 or > 2100)
+            return BadRequest(new { mensaje = "Indica el mes y el año de la deuda." });
+
+        var porPeriodo = periodoAnio.HasValue;
+
+        if (porPeriodo && !desde.HasValue && !hasta.HasValue)
+        {
+            desde = new DateOnly(2000, 1, 1);
+            hasta = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(ZonaBolivia).DateTime);
+        }
 
         if (!desde.HasValue || !hasta.HasValue)
         {
@@ -61,8 +76,7 @@ public sealed class ReportesCajaController : ControllerBase
         }
 
         if (
-            hasta.Value.DayNumber -
-            desde.Value.DayNumber > 366 ||
+            (!porPeriodo && hasta.Value.DayNumber - desde.Value.DayNumber > 366) ||
             hasta.Value == DateOnly.MaxValue
         )
         {
@@ -90,7 +104,7 @@ public sealed class ReportesCajaController : ControllerBase
         // y anulaciones realizadas dentro del periodo.
         // Consultar no modifica ningun dato.
 
-        var recibos = await _db.Recibos
+        var consultaRecibos = _db.Recibos
             .AsNoTracking()
             .Include(x => x.Detalles)
             .Where(x =>
@@ -103,7 +117,15 @@ public sealed class ReportesCajaController : ControllerBase
                     x.FechaAnulacion.HasValue &&
                     x.FechaAnulacion.Value >= inicio &&
                     x.FechaAnulacion.Value < fin
-                ))
+                ));
+
+        if (porPeriodo)
+        {
+            consultaRecibos = consultaRecibos.Where(x =>
+                x.Detalles.Any(d => d.PeriodoAnio == periodoAnio && d.PeriodoMes == periodoMes));
+        }
+
+        var recibos = await consultaRecibos
             .OrderBy(x => x.FechaEmision)
             .Take(5001)
             .ToListAsync(ct);
@@ -189,7 +211,9 @@ public sealed class ReportesCajaController : ControllerBase
                     .Select(d => new ConceptoDetalle(
                         d.ConceptoCobroId,
                         d.Concepto,
-                        d.Monto))
+                        d.Monto,
+                        d.PeriodoAnio,
+                        d.PeriodoMes))
                     .ToList()
             ));
         }
@@ -230,6 +254,26 @@ public sealed class ReportesCajaController : ControllerBase
                     {
                         Conceptos = delConcepto,
                         Monto = delConcepto.Sum(c => c.Monto)
+                    };
+                })
+                .Where(m => m.Conceptos.Count > 0)
+                .ToList();
+        }
+
+        if (porPeriodo)
+        {
+            // Un recibo puede pagar varios meses: cuenta solo el del período.
+            movimientos = movimientos
+                .Select(m =>
+                {
+                    var delPeriodo = m.Conceptos
+                        .Where(c => c.PeriodoAnio == periodoAnio && c.PeriodoMes == periodoMes)
+                        .ToList();
+
+                    return m with
+                    {
+                        Conceptos = delPeriodo,
+                        Monto = delPeriodo.Sum(c => c.Monto)
                     };
                 })
                 .Where(m => m.Conceptos.Count > 0)
@@ -353,7 +397,9 @@ public sealed class ReportesCajaController : ControllerBase
                 x.FechaAnulacion.Value < fin &&
                 (unidadesDelBloque == null || unidadesDelBloque.Contains(x.UnidadComercialId)) &&
                 (!conceptoId.HasValue || conceptoId.Value == Guid.Empty ||
-                    x.Detalles.Any(d => d.ConceptoCobroId == conceptoId.Value)))
+                    x.Detalles.Any(d => d.ConceptoCobroId == conceptoId.Value)) &&
+                (!porPeriodo ||
+                    x.Detalles.Any(d => d.PeriodoAnio == periodoAnio && d.PeriodoMes == periodoMes)))
             .Select(x => new
             {
                 reciboId = x.Id,
@@ -388,7 +434,15 @@ public sealed class ReportesCajaController : ControllerBase
                 fechaBolivia = x.FechaEmisionUtc
                     .ToOffset(ZonaBolivia)
                     .ToString("dd/MM/yyyy HH:mm"),
-                conceptos = x.Conceptos
+                conceptos = x.Conceptos.Select(c => new
+                {
+                    conceptoCobroId = c.ConceptoCobroId,
+                    codigo = codigosConcepto.GetValueOrDefault(c.ConceptoCobroId, ""),
+                    concepto = c.Concepto,
+                    monto = c.Monto,
+                    periodoAnio = c.PeriodoAnio,
+                    periodoMes = c.PeriodoMes
+                })
             })
             .ToList();
 
@@ -402,6 +456,7 @@ public sealed class ReportesCajaController : ControllerBase
             generadoUtc = DateTimeOffset.UtcNow,
             tipo = "Consulta de caja - no es un cierre definitivo",
             filtroConceptoId = conceptoId,
+            filtroPeriodo = porPeriodo ? $"{periodoMes:00}/{periodoAnio}" : null,
             filtroBloque = bloqueFiltro,
 
             cantidadRecibosValidos = movimientos.Count,
@@ -529,7 +584,9 @@ public sealed class ReportesCajaController : ControllerBase
     private sealed record ConceptoDetalle(
         Guid ConceptoCobroId,
         string Concepto,
-        decimal Monto);
+        decimal Monto,
+        int? PeriodoAnio = null,
+        int? PeriodoMes = null);
 
     private sealed record MovimientoReporte(
         Guid ReciboId,
