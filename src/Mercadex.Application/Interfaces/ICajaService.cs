@@ -20,5 +20,6 @@ public interface ICajaService
         ProcesarCobroDto dto,
         string? registradoPor = null,
         string? cargoEmisor = null,
-        string? registradoPorId = null);
+        string? registradoPorId = null,
+        DateTimeOffset? fechaEmision = null);
 }

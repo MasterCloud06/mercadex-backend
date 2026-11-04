@@ -478,6 +478,44 @@ await prueba('Pago parcial: anular un abono y cobrar otro a la vez no pierde nin
   console.log('      (pagado/saldo en cada carrera: ' + resultados.join(', ') + ')');
 });
 
+// ---------------------------------------------------------------- FECHA DE COBRO
+await prueba('Fecha de cobro: un día anterior sí; futura, muy antigua o con la caja cerrada, no', async () => {
+  const bolivia = d => new Date(d.getTime() - 4 * 3600 * 1000).toISOString().slice(0, 10);
+  const haceDias = n => bolivia(new Date(Date.now() - n * 86400000));
+  const nueva = async mes => {
+    await A('POST', '/api/cobranza/cargo', {
+      unidadComercialId: unidad(3), conceptoCobroId: concepto, monedaId: bob.id, monto: 80,
+      fechaEmision: '2029-01-01', fechaVencimiento: null, anio: 2029, mes
+    });
+    return (await deudasDe(3, '&anio=2029')).find(x => x.mes === mes);
+  };
+  const cobro = (d, fechaCobro) => A('POST', '/api/caja/cobrar', {
+    numeroRecibo: 0, unidadComercialId: unidad(3), monedaId: bob.id, monto: 80, formaPago: 1, nombrePagador: 'Pagador Prueba',
+    tipoCambio: 1, referencia: null, fechaCobro, items: [{ obligacionId: d.id, nombreConcepto: d.concepto }]
+  });
+
+  const d1 = await nueva(1);
+  igual(await estado(cobro(d1, haceDias(-1))), 400, 'mañana');
+  igual(await estado(cobro(d1, haceDias(40))), 400, 'hace 40 días');
+
+  // Caja general cerrada hace 25 días (si una corrida anterior ya la cerró, sigue cerrada).
+  await estado(A('POST', '/api/arqueo-diario/cierres', {
+    fecha: haceDias(25), monedaId: bob.id, efectivoContado: 0, responsable: 'Prueba', observacion: 'Prueba de fecha de cobro', caja: 'general'
+  }));
+  igual(await estado(cobro(d1, haceDias(25))), 409, 'caja cerrada');
+  igual((await deudasDe(3, '&anio=2029')).find(x => x.id === d1.id).estado, 'Pendiente', 'nada se cobró');
+
+  const r = await cobro(d1, haceDias(3));
+  igual(bolivia(new Date(r.recibo.fechaEmision)), haceDias(3), 'recibo con la fecha elegida');
+  const caja = await A('GET', `/api/reportes-caja?desde=${haceDias(3)}&hasta=${haceDias(3)}`);
+  verdad(caja.cobros.some(c => c.numeroRecibo === r.recibo.numero), 'aparece en el reporte de ese día');
+
+  // Sin fecha, o con la de hoy: la fecha actual, como antes.
+  const d2 = await nueva(2);
+  const hoy = await cobro(d2, haceDias(0));
+  igual(bolivia(new Date(hoy.recibo.fechaEmision)), haceDias(0), 'con la fecha de hoy');
+});
+
 await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se pueden cobrar después)', async () => {
   const datos = {
     conceptoCobroId: concepto, anio: 2027, mes: 3, alcance: 'bloque', bloque, modoMonto: 'fijo', monto: 70,
