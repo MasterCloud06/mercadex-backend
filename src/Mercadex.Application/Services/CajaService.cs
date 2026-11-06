@@ -58,7 +58,8 @@ public async Task<ResultadoCobroDto> ProcesarCobroAsync(
     ProcesarCobroDto dto,
     string? registradoPor = null,
     string? cargoEmisor = null,
-    string? registradoPorId = null)
+    string? registradoPorId = null,
+    DateTimeOffset? fechaEmision = null)
 {
     if (dto.Items is null)
     {
@@ -153,7 +154,8 @@ public async Task<ResultadoCobroDto> ProcesarCobroAsync(
             items,
             (FormaPago)dto.FormaPago,
             dto.NombrePagador,
-            DateTimeOffset.UtcNow,
+            // La API valida la fecha elegida (no futura, caja no cerrada).
+            fechaEmision ?? DateTimeOffset.UtcNow,
             dto.TipoCambio,
             dto.Referencia);
 

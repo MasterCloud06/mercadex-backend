@@ -12,6 +12,11 @@ namespace Mercadex.Api.Controllers;
 [Route("api/[controller]")]
 public sealed class CajaController : ControllerBase
 {
+    private static readonly TimeSpan ZonaBolivia = TimeSpan.FromHours(-4);
+
+    /// <summary>Hasta cuántos días atrás se puede registrar la fecha de un cobro.</summary>
+    private const int DiasAtrasMaximo = 31;
+
     private readonly ICajaService _service;
     private readonly IPagoRepository _pagoRepository;
     private readonly IReciboRepository _reciboRepository;
@@ -133,8 +138,41 @@ public async Task<ActionResult<ResultadoCobroDto>> ProcesarCobro(
     // Nombre completo y cargo de quien emite el recibo.
     var (registradoPor, cargo) = await Mercadex.Api.Seguridad.EmisorRecibo.ObtenerAsync(User, db, ct);
 
+    // Fecha de cobro elegida (un pago de un día anterior, por ejemplo un QR del
+    // domingo que se registra el lunes): ese día, a la hora actual de Bolivia.
+    var ahora = DateTimeOffset.UtcNow.ToOffset(ZonaBolivia);
+    var hoy = DateOnly.FromDateTime(ahora.DateTime);
+    DateTimeOffset? fechaEmision = null;
+
+    if (dto.FechaCobro is { } fecha && fecha != hoy)
+    {
+        if (fecha > hoy)
+            return BadRequest(new { mensaje = "La fecha de cobro no puede ser posterior a hoy." });
+
+        if (fecha < hoy.AddDays(-DiasAtrasMaximo))
+            return BadRequest(new { mensaje = $"La fecha de cobro puede ser de hasta {DiasAtrasMaximo} días atrás." });
+
+        // No se agrega un cobro a un día cuya caja ya se cerró: cambiaría el cierre.
+        var cajero = SeguridadUsuarios.IdResponsable(User);
+        var cerrada = await db.CierresCaja.AsNoTracking().AnyAsync(c =>
+            c.Fecha == fecha &&
+            c.MonedaId == dto.MonedaId &&
+            (c.CajeroId == Mercadex.Domain.Caja.CierreCaja.CajaGeneral || c.CajeroId == cajero), ct);
+
+        if (cerrada)
+        {
+            return Conflict(new
+            {
+                mensaje = $"La caja del {fecha:dd/MM/yyyy} ya fue cerrada: no se puede registrar un cobro con esa fecha."
+            });
+        }
+
+        fechaEmision = new DateTimeOffset(fecha.ToDateTime(TimeOnly.FromDateTime(ahora.DateTime)), ZonaBolivia)
+            .ToUniversalTime();
+    }
+
     var resultado = await _service
-        .ProcesarCobroAsync(dto, registradoPor, cargo, SeguridadUsuarios.IdResponsable(User));
+        .ProcesarCobroAsync(dto, registradoPor, cargo, SeguridadUsuarios.IdResponsable(User), fechaEmision);
 
     var caseta = await db.UnidadesComerciales.AsNoTracking()
         .Where(u => u.Id == dto.UnidadComercialId).Select(u => u.Codigo).FirstOrDefaultAsync(ct);
@@ -146,7 +184,8 @@ public async Task<ActionResult<ResultadoCobroDto>> ProcesarCobro(
         $"Recibo N.º {resultado.Recibo.Numero} · Caseta {caseta} · {resultado.Pago.FormaPago} · " +
         $"{Cambios.Monto(resultado.Pago.Monto, moneda ?? "")} · " +
         string.Join(", ", resultado.Recibo.Detalles.Select(d => d.Concepto)) +
-        (string.IsNullOrWhiteSpace(resultado.Recibo.Observaciones) ? "" : $" · Obs.: {resultado.Recibo.Observaciones}"));
+        (string.IsNullOrWhiteSpace(resultado.Recibo.Observaciones) ? "" : $" · Obs.: {resultado.Recibo.Observaciones}") +
+        (fechaEmision is null ? "" : $" · Fecha de cobro: {dto.FechaCobro:dd/MM/yyyy} (registrado el {ahora:dd/MM/yyyy HH:mm})"));
 
     return Ok(resultado);
 }
