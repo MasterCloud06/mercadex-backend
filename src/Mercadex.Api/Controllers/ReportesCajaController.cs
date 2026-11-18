@@ -411,7 +411,20 @@ public sealed class ReportesCajaController : ControllerBase
                     ? (Guid?)pago.MonedaId
                     : null,
                 motivo = x.MotivoAnulacion,
-                responsable = x.AnuladoPor
+                responsable = x.AnuladoPor,
+                // Para listarlos con su detalle (como el «Parte diario» anterior).
+                unidadComercialId = x.UnidadComercialId,
+                fechaEmisionUtc = x.FechaEmision,
+                pagador = pagos.TryGetValue(x.PagoId, out var pagoAnulado) ? pagoAnulado.NombrePagador : "",
+                conceptos = x.Detalles.Select(d => new
+                {
+                    conceptoCobroId = d.ConceptoCobroId,
+                    codigo = codigosConcepto.GetValueOrDefault(d.ConceptoCobroId, ""),
+                    concepto = d.Concepto,
+                    monto = d.Monto,
+                    periodoAnio = d.PeriodoAnio,
+                    periodoMes = d.PeriodoMes
+                })
             })
             .OrderByDescending(x => x.fechaAnulacionUtc)
             .ToList();
