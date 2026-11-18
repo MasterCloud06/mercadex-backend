@@ -33,6 +33,12 @@ todas quedan con 0 (las pagadas antes de esta versión tienen 0 y estado Pagada:
 completas). PostgreSQL agrega una columna con valor por defecto sin reescribir la tabla. Script para revisarla:
 `20261030065831_AgregarPagosParciales.sql`. Su `Down()` no borra la columna (conserva los abonos).
 
+Migración `20261118150657_AgregarNumeroConcepto` (número de cada concepto para los reportes, 0001, 0024…). Agrega la columna
+`conceptos_cobro."Numero"` (entero, opcional), la llena con 1, 2, 3… en el orden en que se crearon los conceptos
+y crea un índice único sobre ella. **Solo escribe en esa columna nueva**: no toca deudas, recibos, pagos ni el
+código, nombre o estado de los conceptos. La asociación puede cambiar cada número en «Conceptos de cobro».
+Script para revisarla: `20261118150657_AgregarNumeroConcepto.sql`. Su `Down()` no borra la columna.
+
 ## Antes de desplegar
 
 1. **Respaldo** de la base de producción:

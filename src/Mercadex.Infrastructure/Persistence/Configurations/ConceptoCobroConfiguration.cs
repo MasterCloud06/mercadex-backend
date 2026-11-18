@@ -31,6 +31,12 @@ public sealed class ConceptoCobroConfiguration :
         builder.Property(x => x.Activo)
             .IsRequired();
 
+        // Número para los reportes: único entre los que lo tienen.
+        builder.HasIndex(x => x.Numero)
+            .HasDatabaseName("UX_conceptos_cobro_numero")
+            .IsUnique()
+            .HasFilter("\"Numero\" IS NOT NULL");
+
         builder.HasIndex(x => x.Codigo)
             .IsUnique();
 

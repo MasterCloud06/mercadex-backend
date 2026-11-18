@@ -311,10 +311,11 @@ public sealed class ReportesCajaController : ControllerBase
             .ToList();
 
         // Código de cada cuenta, para el diario por servicio.
-        var idsConcepto = movimientos.SelectMany(m => m.Conceptos.Select(c => c.ConceptoCobroId)).Distinct().ToList();
-        var codigosConcepto = await _db.ConceptosCobro.AsNoTracking()
-            .Where(c => idsConcepto.Contains(c.Id))
-            .ToDictionaryAsync(c => c.Id, c => c.Codigo, ct);
+        var datosConcepto = await _db.ConceptosCobro.AsNoTracking()
+            .Select(c => new { c.Id, c.Codigo, c.Numero })
+            .ToDictionaryAsync(c => c.Id, ct);
+        var codigosConcepto = datosConcepto.ToDictionary(c => c.Key, c => c.Value.Codigo);
+        int? Numero(Guid id) => datosConcepto.TryGetValue(id, out var c) ? c.Numero : null;
 
         var conceptos = movimientos
             .SelectMany(m =>
@@ -336,6 +337,7 @@ public sealed class ReportesCajaController : ControllerBase
                 monedaId = g.Key.MonedaId,
                 conceptoCobroId = g.Key.ConceptoCobroId,
                 codigo = codigosConcepto.GetValueOrDefault(g.Key.ConceptoCobroId, ""),
+                numero = Numero(g.Key.ConceptoCobroId),
                 concepto = g.Key.Concepto,
                 cantidad = g.Count(),
                 total = g.Sum(x => x.Monto)
@@ -411,7 +413,21 @@ public sealed class ReportesCajaController : ControllerBase
                     ? (Guid?)pago.MonedaId
                     : null,
                 motivo = x.MotivoAnulacion,
-                responsable = x.AnuladoPor
+                responsable = x.AnuladoPor,
+                // Para listarlos con su detalle (como el «Parte diario» anterior).
+                unidadComercialId = x.UnidadComercialId,
+                fechaEmisionUtc = x.FechaEmision,
+                pagador = pagos.TryGetValue(x.PagoId, out var pagoAnulado) ? pagoAnulado.NombrePagador : "",
+                conceptos = x.Detalles.Select(d => new
+                {
+                    conceptoCobroId = d.ConceptoCobroId,
+                    codigo = codigosConcepto.GetValueOrDefault(d.ConceptoCobroId, ""),
+                    numero = Numero(d.ConceptoCobroId),
+                    concepto = d.Concepto,
+                    monto = d.Monto,
+                    periodoAnio = d.PeriodoAnio,
+                    periodoMes = d.PeriodoMes
+                })
             })
             .OrderByDescending(x => x.fechaAnulacionUtc)
             .ToList();
@@ -438,6 +454,7 @@ public sealed class ReportesCajaController : ControllerBase
                 {
                     conceptoCobroId = c.ConceptoCobroId,
                     codigo = codigosConcepto.GetValueOrDefault(c.ConceptoCobroId, ""),
+                    numero = Numero(c.ConceptoCobroId),
                     concepto = c.Concepto,
                     monto = c.Monto,
                     periodoAnio = c.PeriodoAnio,

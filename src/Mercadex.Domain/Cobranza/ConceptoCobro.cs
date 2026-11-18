@@ -36,6 +36,26 @@ public sealed class ConceptoCobro : Entity
 
     public string Codigo { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// Número del concepto en los reportes (0001, 0024…), como en el sistema
+    /// anterior. Se asigna solo al crearlo y se puede cambiar.
+    /// </summary>
+    public int? Numero { get; private set; }
+
+    public const int NumeroMaximo = 9999;
+
+    public void AsignarNumero(int numero)
+    {
+        if (numero < 1 || numero > NumeroMaximo)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(numero),
+                $"El número del concepto debe estar entre 1 y {NumeroMaximo}.");
+        }
+
+        Numero = numero;
+    }
+
     public string Nombre { get; private set; } = string.Empty;
 
     public string? Descripcion { get; private set; }
