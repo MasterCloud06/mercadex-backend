@@ -633,12 +633,20 @@ namespace Mercadex.Infrastructure.Persistence.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<int?>("Numero")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Codigo")
                         .IsUnique();
 
                     b.HasIndex("Nombre");
+
+                    b.HasIndex("Numero")
+                        .IsUnique()
+                        .HasDatabaseName("UX_conceptos_cobro_numero")
+                        .HasFilter("\"Numero\" IS NOT NULL");
 
                     b.ToTable("conceptos_cobro", (string)null);
                 });

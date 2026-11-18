@@ -119,6 +119,11 @@ public sealed class CatalogosIngresosController : ControllerBase
             nombre,
             solicitud.Descripcion);
 
+        // Número para los reportes: el siguiente libre.
+        var ultimo = await _context.ConceptosCobro.AsNoTracking().MaxAsync(c => c.Numero) ?? 0;
+        if (ultimo < ConceptoCobro.NumeroMaximo)
+            conceptoNuevo.AsignarNumero(ultimo + 1);
+
         _context.ConceptosCobro.Add(conceptoNuevo);
 
         await _context.SaveChangesAsync();
@@ -129,6 +134,7 @@ public sealed class CatalogosIngresosController : ControllerBase
             {
                 conceptoNuevo.Id,
                 conceptoNuevo.Codigo,
+                conceptoNuevo.Numero,
                 conceptoNuevo.Nombre,
                 conceptoNuevo.Descripcion,
                 conceptoNuevo.Activo

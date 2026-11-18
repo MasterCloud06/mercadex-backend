@@ -516,6 +516,33 @@ await prueba('Fecha de cobro: un día anterior sí; futura, muy antigua o con la
   igual(bolivia(new Date(hoy.recibo.fechaEmision)), haceDias(0), 'con la fecha de hoy');
 });
 
+// ---------------------------------------------------------------- NÚMERO DEL CONCEPTO
+await prueba('Número del concepto: se asigna solo, se puede cambiar, no se repite y sale en los reportes', async () => {
+  const todos = await A('GET', '/api/conceptos-cobro');
+  const nuestro = todos.find(c => c.id === concepto);
+  verdad(Number.isInteger(nuestro.numero) && nuestro.numero > 0, 'el concepto de prueba tiene número: ' + nuestro.numero);
+  const max = Math.max(...todos.map(c => c.numero ?? 0));
+
+  const nuevo = await A('POST', '/api/ingresos/catalogos/conceptos', { codigo: 'N' + marca, nombre: 'Prueba número ' + marca });
+  igual(nuevo.numero, max + 1, 'un concepto nuevo toma el siguiente número');
+
+  // Repetido: 409. Fuera de rango: 400. Sin número (instaladores anteriores): no cambia.
+  const otro = todos.find(c => c.id !== concepto && c.numero);
+  igual(await estado(A('PUT', `/api/conceptos-cobro/${nuevo.id}`, { nombre: nuevo.nombre, descripcion: null, numero: otro.numero })), 409, 'número repetido');
+  igual(await estado(A('PUT', `/api/conceptos-cobro/${nuevo.id}`, { nombre: nuevo.nombre, descripcion: null, numero: 10000 })), 400, 'fuera de rango');
+  await A('PUT', `/api/conceptos-cobro/${nuevo.id}`, { nombre: nuevo.nombre, descripcion: null });
+  igual((await A('GET', '/api/conceptos-cobro')).find(c => c.id === nuevo.id).numero, max + 1, 'sin número: no cambia');
+
+  const libre = max + 50;
+  await A('PUT', `/api/conceptos-cobro/${nuevo.id}`, { nombre: nuevo.nombre, descripcion: null, numero: libre });
+  igual((await A('GET', '/api/conceptos-cobro')).find(c => c.id === nuevo.id).numero, libre, 'número cambiado');
+
+  // El reporte de caja trae el número de cada servicio.
+  const caja = await A('GET', '/api/reportes-caja?desde=2026-01-01&hasta=2026-12-31');
+  verdad(caja.conceptos.some(c => c.conceptoCobroId === concepto && c.numero === nuestro.numero), 'reporte por servicio con número');
+  verdad(caja.cobros.every(c => c.conceptos.every(x => 'numero' in x)), 'cobros con número');
+});
+
 await prueba('Cargo mensual: las casetas desmarcadas no reciben la deuda (y se pueden cobrar después)', async () => {
   const datos = {
     conceptoCobroId: concepto, anio: 2027, mes: 3, alcance: 'bloque', bloque, modoMonto: 'fijo', monto: 70,

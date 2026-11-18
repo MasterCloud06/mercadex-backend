@@ -30,7 +30,7 @@ public sealed class ConceptosCobroController : ControllerBase
     public async Task<IActionResult> Listar(CancellationToken ct)
     {
         var conceptos = await _db.ConceptosCobro.AsNoTracking()
-            .Select(c => new { c.Id, c.Codigo, c.Nombre, c.Descripcion, c.Activo })
+            .Select(c => new { c.Id, c.Codigo, c.Numero, c.Nombre, c.Descripcion, c.Activo })
             .ToListAsync(ct);
 
         var deudas = await _db.Obligaciones.AsNoTracking()
@@ -57,6 +57,7 @@ public sealed class ConceptosCobroController : ControllerBase
             {
                 id = c.Id,
                 codigo = c.Codigo,
+                numero = c.Numero,
                 nombre = c.Nombre,
                 descripcion = c.Descripcion,
                 activo = c.Activo,
@@ -66,9 +67,10 @@ public sealed class ConceptosCobroController : ControllerBase
             }));
     }
 
-    public sealed record ConceptoRequest(string? Nombre, string? Descripcion);
+    /// <param name="Numero">Número para los reportes (opcional; los instaladores anteriores no lo envían).</param>
+    public sealed record ConceptoRequest(string? Nombre, string? Descripcion, int? Numero = null);
 
-    /// <summary>Corrige el nombre o la descripción (el código no cambia).</summary>
+    /// <summary>Corrige el nombre, la descripción o el número (el código no cambia).</summary>
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Actualizar(Guid id, [FromBody] ConceptoRequest r, CancellationToken ct)
     {
@@ -84,6 +86,21 @@ public sealed class ConceptosCobroController : ControllerBase
             .AnyAsync(x => x.Id != id && x.Nombre.ToUpper() == nombre.ToUpper(), ct);
         if (repetido)
             return Conflict(new { mensaje = $"Ya existe otro concepto llamado «{nombre}»." });
+
+        if (r.Numero is { } numero && numero != c.Numero)
+        {
+            if (numero < 1 || numero > ConceptoCobro.NumeroMaximo)
+                return BadRequest(new { mensaje = $"El número debe estar entre 1 y {ConceptoCobro.NumeroMaximo}." });
+
+            var otro = await _db.ConceptosCobro.AsNoTracking()
+                .Where(x => x.Id != id && x.Numero == numero)
+                .Select(x => x.Nombre)
+                .FirstOrDefaultAsync(ct);
+            if (otro is not null)
+                return Conflict(new { mensaje = $"El número {numero:0000} ya es de «{otro}»." });
+
+            c.AsignarNumero(numero);
+        }
 
         c.CambiarNombre(nombre);
         c.CambiarDescripcion(r.Descripcion);
